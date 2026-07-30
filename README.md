@@ -1,6 +1,6 @@
 # Hyperliquid Monitor
 
-![Python Version](https://img.shields.io/badge/python-3.11%2B-blue.svg)
+![Python Version](https://img.shields.io/badge/python-3.14%2B-blue.svg)
 ![Aiogram Version](https://img.shields.io/badge/aiogram-3.x-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -104,7 +104,7 @@ hyperliquid-monitor/
 
 ## 💻 技术栈
 
-- **语言**: Python 3.11 + 原生 `asyncio` 异步编程模型
+- **语言**: Python 3.14 + 原生 `asyncio` 异步编程模型
 - **Bot 框架**: [aiogram 3.x](https://docs.aiogram.dev/en/latest/) - 高性能的异步 Telegram Bot API
 - **网络通信**: [aiohttp](https://docs.aiohttp.org/en/stable/) - 处理与 Hyperliquid REST/WebSocket 接口的交互
 - **数据持久化**: [aiosqlite](https://aiosqlite.omnilib.dev/en/stable/) - 非阻塞式 SQLite 驱动

@@ -10,3 +10,6 @@ data/
 *.md
 .vscode/
 .idea/
+.github/
+compose.yaml
+Dockerfile
