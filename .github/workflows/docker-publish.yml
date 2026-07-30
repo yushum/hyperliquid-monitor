@@ -1,0 +1,73 @@
+name: Docker Build and Push
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+    branches:
+      - master
+
+jobs:
+  check-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      critical_files: ${{ steps.filter.outputs.critical_files }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check for critical file changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            critical_files:
+              - 'Dockerfile'
+              - 'requirements.txt'
+              - 'main.py'
+              - 'core/**'
+              - 'infrastructure/**'
+              - 'services/**'
+              - 'tg_bot/**'
+
+  build-and-push:
+    needs: check-changes
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.ref_type == 'tag' ||
+      needs.check-changes.outputs.critical_files == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract Docker metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: yushum/hyperliquid-monitor
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
