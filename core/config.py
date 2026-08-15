@@ -19,6 +19,7 @@ class Settings(BaseSettings):
 
     # Monitor tuning
     FILL_BUFFER_SECONDS: float = 1.0
+    ORDER_BUFFER_SECONDS: float = 2.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

@@ -52,6 +52,7 @@ touch .env
 | `DB_PATH` | ❌ | SQLite 数据库文件的挂载路径 | `data/bot.db` |
 | `LOG_LEVEL` | ❌ | 控制台日志级别 (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
 | `BOT_LANGUAGE` | ❌ | 默认展示语言 (`zh` 或 `en`) | `zh` |
+| `ORDER_BUFFER_SECONDS` | ❌ | 订单更新聚合窗口(秒)，窗口内多条订单通知合并成一条 | `2.0` |
 
 ### 2. 启动服务
 

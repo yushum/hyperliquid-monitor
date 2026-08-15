@@ -19,7 +19,7 @@ from aiogram.types import (
 from core.config import settings
 from infrastructure.db import add_address, get_addresses_with_notes, remove_address, get_setting, set_setting, update_note, update_address_settings
 from infrastructure.hl_client import HyperliquidClient
-from tg_bot.locales import get_text
+from tg_bot.locales import format_order_type, get_text
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -657,6 +657,8 @@ async def process_orders_callback(callback_query: CallbackQuery) -> None:
 
     try:
         orders = await hl.get_open_orders(address)
+        if _monitor:
+            _monitor.register_order_owners(address, orders)
         orders.sort(key=lambda x: x.get("coin", ""))
         
         orders_str = ""
@@ -680,7 +682,7 @@ async def process_orders_callback(callback_query: CallbackQuery) -> None:
             if lang == "zh":
                 post_only = "是 (Yes)" if o.get("postOnly") else "否 (No)"
                 
-            tif = o.get("tif", "Unknown")
+            order_type = format_order_type(o.get("orderType") or o.get("tif"), lang)
             ts = o.get("timestamp", 0)
             time_str = datetime.fromtimestamp(ts / 1000.0).strftime('%Y-%m-%d %H:%M:%S') if ts else "Unknown"
 
@@ -695,7 +697,7 @@ async def process_orders_callback(callback_query: CallbackQuery) -> None:
                 oid=oid,
                 reduce_only=reduce_only,
                 post_only=post_only,
-                tif=tif,
+                order_type=order_type,
                 time=time_str
             )
 

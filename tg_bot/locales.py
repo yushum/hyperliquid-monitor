@@ -25,6 +25,7 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "filter_current": "ℹ️ Current global notification threshold is ${amount}.",
         "filter_invalid": "❌ Invalid amount. Please enter a valid number.",
         "invalid_address": "❌ Invalid Address format. Please provide a 0x address.",
+        "addr_unknown_multi": "Unknown (multiple addresses)",
         "add_success": "✅ Successfully added <code>{address}</code> to monitoring.",
         "add_exists": "⚠️ Address is already being monitored.",
         "del_success": "🗑️ Successfully removed <code>{address}</code> from monitoring.",
@@ -57,8 +58,19 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "Order ID: {oid}\n"
             "Reduce Only: {reduce_only}\n"
             "Post Only: {post_only}\n"
-            "TIF: {tif}\n"
+            "Type: {order_type}\n"
             "Time: {time}"
+        ),
+        "order_updates_batch_alert": (
+            "📝 Order Updates ({count})\n\n{items}"
+        ),
+        "order_update_item": (
+            "• {coin} | {dir} | Status: {status}\n"
+            "  Address: <code>{address}</code>\n"
+            "  Limit Px: {limit_px} | Remaining: {sz} / Original: {orig_sz}\n"
+            "  Order ID: {oid} | Reduce Only: {reduce_only} | Post Only: {post_only}\n"
+            "  Type: {order_type}\n"
+            "  Time: {time}"
         ),
         "funding_alert": (
             "💸 Funding Payment\n"
@@ -118,7 +130,7 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "  Order ID: {oid}\n"
             "  Reduce Only: {reduce_only}\n"
             "  Post Only: {post_only}\n"
-            "  TIF: {tif}\n"
+            "  Type: {order_type}\n"
             "  Time: {time}\n\n"
         ),
         "orders_result": "📝 <b>Open Orders:</b> {address_display}\n\n{orders}",
@@ -190,6 +202,7 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "filter_current": "ℹ️ 当前全局资金过滤阈值为 ${amount}。",
         "filter_invalid": "❌ 无效的金额，请输入一个纯数字。",
         "invalid_address": "❌ 地址格式无效，请提供 0x 开头的地址。",
+        "addr_unknown_multi": "无法确定 (监控了多个地址)",
         "add_success": "✅ 已成功将 <code>{address}</code> 加入监控。",
         "add_exists": "⚠️ 该地址已经在监控列表中。",
         "del_success": "🗑️ 已成功将 <code>{address}</code> 移出监控。",
@@ -222,8 +235,19 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "订单 ID: {oid}\n"
             "只减仓: {reduce_only}\n"
             "被动委托: {post_only}\n"
-            "有效方式: {tif}\n"
+            "订单类型: {order_type}\n"
             "更新时间: {time}"
+        ),
+        "order_updates_batch_alert": (
+            "📝 订单状态更新 (共 {count} 条)\n\n{items}"
+        ),
+        "order_update_item": (
+            "• {coin} | {dir} | 状态: {status}\n"
+            "  地址: <code>{address}</code>\n"
+            "  限价: {limit_px} | 剩余: {sz} / 初始: {orig_sz}\n"
+            "  订单 ID: {oid} | 只减仓: {reduce_only} | 被动: {post_only}\n"
+            "  订单类型: {order_type}\n"
+            "  时间: {time}"
         ),
         "funding_alert": (
             "💸 资金费率结算\n"
@@ -283,7 +307,7 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "  订单 ID: {oid}\n"
             "  只减仓: {reduce_only}\n"
             "  被动委托: {post_only}\n"
-            "  有效方式: {tif}\n"
+            "  订单类型: {order_type}\n"
             "  下单时间: {time}\n\n"
         ),
         "orders_result": "📝 <b>当前挂单:</b> {address_display}\n\n{orders}",
@@ -316,6 +340,62 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "state_global": "🌐 跟随全局",
     },
 }
+
+
+def _lang_code(lang_code: str) -> str:
+    """Normalize a language code to 'zh' or 'en' (mirrors get_text)."""
+    return "zh" if lang_code and "zh" in lang_code.lower() else "en"
+
+
+ORDER_STATUS_LABELS_ZH: Dict[str, str] = {
+    "open": "已挂单 (open)",
+    "filled": "已成交 (filled)",
+    "canceled": "已撤销 (canceled)",
+    "cancelled": "已撤销 (cancelled)",
+    "triggered": "已触发 (triggered)",
+    "rejected": "已拒绝 (rejected)",
+    "unknown": "未知 (unknown)",
+}
+
+ORDER_TYPE_LABELS_ZH: Dict[str, str] = {
+    "limit": "限价单",
+    "market": "市价单",
+    "stop limit": "止损限价单",
+    "stop market": "止损市价单",
+    "trigger limit": "触发限价单",
+    "trigger market": "触发市价单",
+    "iceberg": "冰山委托",
+    "alo": "主动挂单",
+    "ioc": "立即成交或取消",
+    "gtc": "一直有效",
+}
+
+
+def format_order_status(status: Any, lang_code: str = "zh") -> str:
+    """Human-readable order status in the target language.
+
+    Hyperliquid returns raw values like ``open`` / ``filled`` / ``canceled``;
+    in Chinese these are translated (with the original kept in parentheses).
+    """
+    if _lang_code(lang_code) == "zh":
+        key = str(status).strip().lower() if status else "unknown"
+        return ORDER_STATUS_LABELS_ZH.get(key, str(status) if status else "Unknown")
+    return str(status) if status else "Unknown"
+
+
+def format_order_type(value: Any, lang_code: str = "zh") -> str:
+    """Human-readable order type / time-in-force in the target language.
+
+    Hyperliquid order updates expose the order type via ``orderType``
+    (e.g. ``Limit``, ``Stop Market``); ``tif`` values (``Alo``/``Ioc``/``Gtc``)
+    are also understood.
+    """
+    if not value:
+        return "Unknown"
+    if _lang_code(lang_code) == "zh":
+        key = str(value).strip().lower()
+        return ORDER_TYPE_LABELS_ZH.get(key, str(value))
+    return str(value)
 
 
 def get_text(lang_code: str, key: str, **kwargs: Any) -> str:

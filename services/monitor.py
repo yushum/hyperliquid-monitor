@@ -9,7 +9,7 @@ import aiohttp
 from core.config import settings
 from infrastructure.db import get_all_address_settings, get_last_fill_time, update_last_fill_time, get_setting
 from services.notifier import BaseNotifier
-from tg_bot.locales import get_text
+from tg_bot.locales import format_order_status, format_order_type, get_text
 
 logger = logging.getLogger(__name__)
 
@@ -28,23 +28,40 @@ class BlockchainMonitor:
         self,
         notifier: BaseNotifier,
         ws_url: Optional[str] = None,
+        hl_client: Optional[Any] = None,
     ) -> None:
         self.notifier = notifier
+        self._hl_client = hl_client
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._flush_task: Optional[asyncio.Task] = None
+        self._order_flush_task: Optional[asyncio.Task] = None
 
         self.ws_url = ws_url or settings.HL_WS_URL
         self._ws: Optional[aiohttp.ClientWebSocketResponse] = None
         self._session: Optional[aiohttp.ClientSession] = None
         self._monitored_addresses: Dict[str, dict] = {}
+        self._address_subscribed_at: Dict[str, int] = {}
         self._global_settings: Dict[str, bool] = {}
 
         # Buffer for aggregating split fills within a short time window
         # key: (address, oid, coin) -> List[fills]
         self._fill_buffer: Dict[tuple, List[Dict[str, Any]]] = defaultdict(list)
         self._buffer_lock = asyncio.Lock()
-        
+
+        # Buffer for aggregating order updates arriving within a short window
+        self._order_buffer: List[Dict[str, Any]] = []
+        self._order_buffer_lock = asyncio.Lock()
+
+        # oid -> address best-effort mapping (orderUpdates payload has no user).
+        # Populated from REST openOrders queries and from userFills.
+        self._order_owner: Dict[int, str] = {}
+
+        # oid -> (last status, last timestamp ms) to suppress duplicate
+        # notifications caused by WS re-subscription snapshots on reconnect.
+        self._order_status_seen: Dict[int, tuple[str, int]] = {}
+        self.ORDER_DEDUP_WINDOW_MS = 30_000
+
         self.min_notional_threshold = 0.0
         self._start_time = int(time.time() * 1000)
 
@@ -66,10 +83,25 @@ class BlockchainMonitor:
         }
             
         self._monitored_addresses = await get_all_address_settings()
+        for addr in list(self._monitored_addresses.keys()):
+            self._address_subscribed_at[addr] = self._start_time
+
+        # Best-effort: preload existing open orders so their future
+        # orderUpdates can be attributed to the right address.
+        if self._hl_client:
+            for addr in list(self._monitored_addresses.keys()):
+                try:
+                    orders = await self._hl_client.get_open_orders(addr)
+                    self.register_order_owners(addr, orders)
+                except Exception:
+                    logger.warning(
+                        "Failed to preload open orders for %s.", addr, exc_info=True
+                    )
 
         self._session = aiohttp.ClientSession()
         self._task = asyncio.create_task(self._ws_loop())
         self._flush_task = asyncio.create_task(self._buffer_flush_loop())
+        self._order_flush_task = asyncio.create_task(self._order_flush_loop())
         logger.info("Starting Hyperliquid WS monitor...")
 
     async def stop(self) -> None:
@@ -81,7 +113,7 @@ class BlockchainMonitor:
             await self._ws.close()
 
         # Cancel tasks and wait for them to actually finish.
-        for task in (self._task, self._flush_task):
+        for task in (self._task, self._flush_task, self._order_flush_task):
             if task is not None:
                 task.cancel()
                 try:
@@ -99,12 +131,14 @@ class BlockchainMonitor:
         if addr_settings is None:
             addr_settings = {}
         self._monitored_addresses[address] = addr_settings
+        self._address_subscribed_at[address] = int(time.time() * 1000)
         if self._ws and not self._ws.closed:
             await self._send_sub(address, subscribe=True)
 
     async def unsubscribe(self, address: str) -> None:
         """Dynamically remove an address from WS monitor."""
         self._monitored_addresses.pop(address, None)
+        self._address_subscribed_at.pop(address, None)
         if self._ws and not self._ws.closed:
             await self._send_sub(address, subscribe=False)
             
@@ -124,6 +158,41 @@ class BlockchainMonitor:
         if addr_pref in ["1", "0"]:
             return addr_pref == "1"
         return self._global_settings.get(f"notify_{notify_type}", True)
+
+    def register_order_owners(self, address: str, orders: List[Dict[str, Any]]) -> None:
+        """Map order ids returned by a REST query to their owning address."""
+        for o in orders:
+            oid = o.get("oid")
+            if oid:
+                self._order_owner[oid] = address
+        if len(self._order_owner) > 10_000:
+            self._order_owner = dict(list(self._order_owner.items())[-5_000:])
+
+    def _resolve_order_address(self, oid: Any) -> str:
+        """Best effort attribution of an order update to a monitored address."""
+        if oid and oid in self._order_owner:
+            return self._order_owner[oid]
+        if len(self._monitored_addresses) == 1:
+            return next(iter(self._monitored_addresses))
+        return ""
+
+    def _is_duplicate_order_update(self, oid: Any, status: str, ts: int) -> bool:
+        """True if the same order already notified this status recently."""
+        if not oid:
+            return False
+        now = ts or 0
+        prev = self._order_status_seen.get(oid)
+        if prev and prev[0] == status:
+            _, prev_ts = prev
+            if now > 0 and prev_ts > 0 and now - prev_ts < self.ORDER_DEDUP_WINDOW_MS:
+                return True
+        self._order_status_seen[oid] = (status, now)
+        if len(self._order_status_seen) > 5_000:
+            cutoff = (now or int(time.time() * 1000)) - self.ORDER_DEDUP_WINDOW_MS
+            self._order_status_seen = {
+                k: v for k, v in self._order_status_seen.items() if v[1] >= cutoff
+            }
+        return False
 
     async def _send_sub(self, address: str, subscribe: bool) -> None:
         if not self._ws or self._ws.closed:
@@ -250,6 +319,9 @@ class BlockchainMonitor:
                     coin = fill.get("coin", "Unknown")
                     key = (user, oid, coin)
                     self._fill_buffer[key].append(fill)
+                    # Fill payloads include the user, so learn who owns this order.
+                    if oid:
+                        self._order_owner[oid] = user
 
             latest_time = max(
                 (f.get("time", 0) for f in new_fills), default=last_time
@@ -346,11 +418,20 @@ class BlockchainMonitor:
 
 
     async def _handle_order_updates(self, data: Dict[str, Any]) -> None:
+        """Handle orderUpdates channel events.
+
+        The payload is a list of order status objects. Note that Hyperliquid
+        does *not* include the owning user in this channel, so the address is
+        resolved best-effort (see ``_resolve_order_address``). Updates are
+        deduplicated (WS re-subscription snapshots repeat ``open`` orders) and
+        buffered briefly so bursts of related order changes become one message.
+        """
         payload = data.get("data", [])
         if not payload:
             return
         
         from datetime import datetime
+        lang = settings.BOT_LANGUAGE
         for order_group in payload:
             order = order_group.get("order", {})
             if not order:
@@ -359,21 +440,33 @@ class BlockchainMonitor:
             coin = order.get("coin", "Unknown")
             side = order.get("side", "")
             if side == "B":
-                dir_str = get_text(settings.BOT_LANGUAGE, "pos_long") if settings.BOT_LANGUAGE == "zh" else "Buy"
+                dir_str = get_text(lang, "pos_long") if "zh" in lang.lower() else "Buy"
             else:
-                dir_str = get_text(settings.BOT_LANGUAGE, "pos_short") if settings.BOT_LANGUAGE == "zh" else "Sell"
+                dir_str = get_text(lang, "pos_short") if "zh" in lang.lower() else "Sell"
                 
-            status = order_group.get("status", "Unknown")
+            raw_status = order_group.get("status", "unknown")
+            status = format_order_status(raw_status, lang)
             limit_px = _safe_float(order.get("limitPx", "0"))
             sz = _safe_float(order.get("sz", "0"))
             orig_sz = _safe_float(order.get("origSz", "0"))
             oid = order.get("oid", "")
             reduce_only = "Yes" if order.get("reduceOnly") else "No"
             post_only = "Yes" if order.get("postOnly") else "No"
-            tif = order.get("tif", "Unknown")
-            
+            order_type_raw = order.get("orderType") or order.get("tif")
+            order_type = format_order_type(order_type_raw, lang)
+
+            address = self._resolve_order_address(oid)
+            if not address:
+                address = get_text(lang, "addr_unknown_multi")
+
             ts = order_group.get("statusTimestamp", order.get("timestamp", 0))
-            if ts < self._start_time:
+            # Suppress the initial `open` snapshot Hyperliquid sends right
+            # after subscribing to an address (otherwise existing open
+            # orders arrive as an unexpected burst of notifications).
+            min_ts = self._address_subscribed_at.get(address, self._start_time)
+            if ts < min_ts:
+                continue
+            if self._is_duplicate_order_update(oid, str(raw_status), ts):
                 continue
                 
             time_str = datetime.fromtimestamp(ts / 1000.0).strftime('%Y-%m-%d %H:%M:%S') if ts else "Unknown"
@@ -382,28 +475,77 @@ class BlockchainMonitor:
             if self.min_notional_threshold > 0 and notional < self.min_notional_threshold:
                 continue
                 
-            address = "Unknown"
-            if len(self._monitored_addresses) == 1:
-                address = list(self._monitored_addresses.keys())[0]
-                
-            msg = get_text(
-                settings.BOT_LANGUAGE,
-                "order_update_alert",
-                address=address,
-                coin=coin,
-                dir=dir_str,
-                status=status,
-                limit_px=f"{limit_px:,.4f}",
-                sz=f"{sz:,.4f}",
-                orig_sz=f"{orig_sz:,.4f}",
-                oid=oid,
-                reduce_only=reduce_only,
-                post_only=post_only,
-                tif=tif,
-                time=time_str
-            )
-            if self.is_notify_enabled(address, "orders"):
-                await self.notifier.notify(msg)
+            item = {
+                "address": address,
+                "coin": coin,
+                "dir": dir_str,
+                "status": status,
+                "limit_px": f"{limit_px:,.4f}",
+                "sz": f"{sz:,.4f}",
+                "orig_sz": f"{orig_sz:,.4f}",
+                "oid": oid,
+                "reduce_only": reduce_only,
+                "post_only": post_only,
+                "order_type": order_type,
+                "time": time_str,
+            }
+            async with self._order_buffer_lock:
+                self._order_buffer.append(item)
+
+    async def _order_flush_loop(self) -> None:
+        """Periodically flush buffered order updates as one notification."""
+        while self._running:
+            try:
+                await asyncio.sleep(settings.ORDER_BUFFER_SECONDS)
+
+                async with self._order_buffer_lock:
+                    if not self._order_buffer:
+                        continue
+                    batched = self._order_buffer
+                    self._order_buffer = []
+
+                await self._send_order_batch(batched)
+
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.error("Error in order flush loop.", exc_info=True)
+
+    async def _send_order_batch(self, items: List[Dict[str, Any]]) -> None:
+        """Send buffered order updates, merging bursts into one message."""
+        enabled = [it for it in items if self.is_notify_enabled(it["address"], "orders")]
+        if not enabled:
+            return
+
+        lang = settings.BOT_LANGUAGE
+        if len(enabled) == 1:
+            it = enabled[0]
+            msg = get_text(lang, "order_update_alert", **it)
+            await self.notifier.notify(msg)
+            return
+
+        # Batch message; chunk at ~3500 chars to stay under Telegram limits.
+        chunks: List[List[str]] = []
+        current: List[str] = []
+        current_len = 0
+        for it in enabled:
+            line = get_text(lang, "order_update_item", **it) + "\n\n"
+            if current and current_len + len(line) > 3500:
+                chunks.append(current)
+                current = []
+                current_len = 0
+            current.append(line)
+            current_len += len(line)
+        if current:
+            chunks.append(current)
+
+        for idx, chunk in enumerate(chunks):
+            body = "".join(chunk)
+            if idx == 0:
+                msg = get_text(lang, "order_updates_batch_alert", count=len(enabled), items=body)
+            else:
+                msg = body.rstrip("\n")
+            await self.notifier.notify(msg)
 
     async def _handle_user_events(self, data: Dict[str, Any]) -> None:
         payload = data.get("data", {})

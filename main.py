@@ -43,7 +43,7 @@ async def main() -> None:
     dp.include_router(router)
 
     notifier = TelegramNotifier(bot, settings.TG_ADMIN_CHAT_ID)
-    monitor = BlockchainMonitor(notifier)
+    monitor = BlockchainMonitor(notifier, hl_client=hl_client)
     await monitor.start()
 
     set_hl_client(hl_client)
