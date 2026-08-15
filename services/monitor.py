@@ -822,7 +822,9 @@ class BlockchainMonitor:
                 )
             order_type_raw = order.get("orderType")
             order_type = escape_html(format_order_type(order_type_raw, lang))
-            time_in_force = escape_html(format_time_in_force(order.get("tif"), lang))
+            time_in_force = escape_html(
+                format_time_in_force(order.get("tif"), lang, order_type=order_type_raw)
+            )
 
             time_str = format_timestamp(ts, lang)
 

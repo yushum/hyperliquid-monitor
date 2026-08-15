@@ -50,7 +50,17 @@ class FormattingTests(unittest.TestCase):
 
     def test_order_labels_are_human_readable(self) -> None:
         self.assertEqual(format_order_type("Stop Market", "zh"), "止损市价单")
+        self.assertEqual(format_order_type("Take Profit Market", "zh"), "止盈市价单")
         self.assertIn("仅挂单", format_time_in_force("Alo", "zh"))
+        self.assertEqual(
+            format_time_in_force(None, "zh", order_type="Stop Market"),
+            "不适用（止损市价单触发后按市价执行）",
+        )
+        self.assertEqual(
+            format_time_in_force(None, "zh", order_type="Take Profit Market"),
+            "不适用（止盈市价单触发后按市价执行）",
+        )
+        self.assertEqual(format_time_in_force(None, "zh"), "接口未提供")
         self.assertIn("保证金不足", format_order_status("marginCanceled", "zh"))
         self.assertEqual(format_order_side("invalid", "zh"), "未知方向")
         self.assertEqual(format_fill_direction("Open Long", "zh"), "开多")

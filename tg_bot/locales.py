@@ -399,8 +399,12 @@ ORDER_TYPE_LABELS_ZH: dict[str, str] = {
     "market": "市价单",
     "stop limit": "止损限价单",
     "stop market": "止损市价单",
+    "stop loss limit": "止损限价单",
+    "stop loss market": "止损市价单",
     "take limit": "止盈限价单",
     "take market": "止盈市价单",
+    "take profit limit": "止盈限价单",
+    "take profit market": "止盈市价单",
     "trigger limit": "触发限价单",
     "trigger market": "触发市价单",
     "iceberg": "冰山委托",
@@ -466,8 +470,22 @@ def format_order_type(value: Any, lang_code: str = "zh") -> str:
     return str(value)
 
 
-def format_time_in_force(value: Any, lang_code: str = "zh") -> str:
+def format_time_in_force(
+    value: Any,
+    lang_code: str = "zh",
+    *,
+    order_type: Any = None,
+) -> str:
     if not value:
+        normalized_type = str(order_type or "").strip().lower()
+        if "market" in normalized_type and any(
+            marker in normalized_type
+            for marker in ("stop", "take profit", "take", "trigger")
+        ):
+            readable_type = format_order_type(order_type, lang_code)
+            if _lang_code(lang_code) == "zh":
+                return f"不适用（{readable_type}触发后按市价执行）"
+            return f"N/A ({readable_type} executes at market when triggered)"
         return "接口未提供" if _lang_code(lang_code) == "zh" else "Not provided by API"
     if _lang_code(lang_code) == "zh":
         key = str(value).strip().lower()

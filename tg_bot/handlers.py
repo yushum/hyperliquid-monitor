@@ -872,8 +872,11 @@ async def process_orders_callback(callback_query: CallbackQuery) -> None:
             reduce_only = format_boolean(
                 o.get("reduceOnly"), lang, provided="reduceOnly" in o
             )
-            order_type = escape_html(format_order_type(o.get("orderType"), lang))
-            time_in_force = escape_html(format_time_in_force(o.get("tif"), lang))
+            order_type_raw = o.get("orderType")
+            order_type = escape_html(format_order_type(order_type_raw, lang))
+            time_in_force = escape_html(
+                format_time_in_force(o.get("tif"), lang, order_type=order_type_raw)
+            )
             is_trigger = bool(o.get("isTrigger"))
             trigger_condition = (
                 escape_html(o.get("triggerCondition") or unavailable(lang))
