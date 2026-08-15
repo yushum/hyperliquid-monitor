@@ -14,6 +14,8 @@
 
 - **🚀 实时监控与推送**: 基于 WebSocket 订阅，秒级获取指定地址的最新交易动态并发送 Telegram 通知。
 - **🧩 智能订单聚合**: 自动识别并合并被拆分的碎单（通过 `oid` 关联），有效避免消息刷屏，保持通知的整洁。
+- **🛡️ 可靠通知**: 事件去重与通知队列持久化到 SQLite；短暂断网、Telegram 失败或正常重启后会继续补发。
+- **🔌 精确地址归属**: 每个地址使用独立用户级 WebSocket，订单更新不再依赖模糊猜测；断线后自动补查近期订单状态。
 - **📊 多维数据查询**: 支持快速查看地址的当前持仓、账户权益、未实现盈亏等核心指标。
 - **⚙️ 灵活的阈值设置**: 支持设置全局推送过滤阈值（如：只推送超过 $1000 的交易），屏蔽低价值通知。
 - **🌍 多语言支持 (i18n)**: 原生支持中文 (zh) 和英文 (en) 语言环境切换。
@@ -49,10 +51,18 @@ touch .env
 |---------|------|------|------|
 | `TG_BOT_TOKEN` | ✅ | Telegram Bot Token（向 [@BotFather](https://t.me/BotFather) 获取） | `123456789:ABCdef...` |
 | `TG_ADMIN_CHAT_ID`| ✅ | 管理员的 Telegram Chat ID（向 [@userinfobot](https://t.me/userinfobot) 获取） | `123456789` |
+| `TG_ADMIN_USER_ID` | 群组通知时必填 | 可操作机器人的管理员用户 ID；私聊时默认与 Chat ID 相同 | `123456789` |
 | `DB_PATH` | ❌ | SQLite 数据库文件的挂载路径 | `data/bot.db` |
 | `LOG_LEVEL` | ❌ | 控制台日志级别 (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
 | `BOT_LANGUAGE` | ❌ | 默认展示语言 (`zh` 或 `en`) | `zh` |
+| `DISPLAY_TIMEZONE` | ❌ | Telegram 消息使用的 IANA 时区 | `Asia/Shanghai` |
+| `FILL_BUFFER_SECONDS` | ❌ | 成交聚合窗口（秒） | `1.0` |
 | `ORDER_BUFFER_SECONDS` | ❌ | 订单更新聚合窗口(秒)，窗口内多条订单通知合并成一条 | `2.0` |
+| `MAX_WS_USERS` | ❌ | 实时 WebSocket 地址上限；官方每 IP 最大为 10 | `10` |
+| `OUTBOX_POLL_SECONDS` | ❌ | 持久化通知队列扫描间隔（秒） | `1.0` |
+| `OUTBOX_RETRY_MAX_SECONDS` | ❌ | 通知失败后的最大重试间隔（秒） | `300` |
+
+> Hyperliquid 对单个 IP 的用户级 WebSocket 订阅最多允许 10 个不同地址。本项目会阻止继续添加超限地址；旧数据库若已有超限数据，只启用最早添加的 10 个并在 Telegram 中告警。
 
 ### 2. 启动服务
 

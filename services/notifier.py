@@ -4,7 +4,16 @@ import logging
 import re
 
 from aiogram import Bot
-from aiogram.exceptions import TelegramRetryAfter
+from aiogram.exceptions import (
+    TelegramBadRequest,
+    TelegramEntityTooLarge,
+    TelegramForbiddenError,
+    TelegramNetworkError,
+    TelegramNotFound,
+    TelegramRetryAfter,
+    TelegramServerError,
+    TelegramUnauthorizedError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -12,10 +21,14 @@ logger = logging.getLogger(__name__)
 _HTML_TAG_RE = re.compile(r"<[^>]+>")
 
 
+class PermanentNotificationError(RuntimeError):
+    """Telegram rejected a message in a way that retries cannot repair."""
+
+
 class BaseNotifier(abc.ABC):
     @abc.abstractmethod
-    async def notify(self, message: str) -> None:
-        pass
+    async def notify(self, message: str) -> bool:
+        """Send a message and return whether delivery succeeded."""
 
 
 class TelegramNotifier(BaseNotifier):
@@ -27,7 +40,7 @@ class TelegramNotifier(BaseNotifier):
         self.bot = bot
         self.chat_id = chat_id
 
-    async def notify(self, message: str) -> None:
+    async def notify(self, message: str) -> bool:
         for attempt in range(1, self.MAX_RETRIES + 1):
             try:
                 await self.bot.send_message(
@@ -36,7 +49,7 @@ class TelegramNotifier(BaseNotifier):
                 # Strip HTML tags for readable log output.
                 plain = _HTML_TAG_RE.sub("", message)
                 logger.info("Notification sent to TG: %s", plain[:80])
-                return
+                return True
             except TelegramRetryAfter as e:
                 logger.warning(
                     "TG rate-limited, retry after %ss (attempt %d/%d)",
@@ -45,7 +58,27 @@ class TelegramNotifier(BaseNotifier):
                     self.MAX_RETRIES,
                 )
                 await asyncio.sleep(e.retry_after)
+            except (TelegramNetworkError, TelegramServerError):
+                logger.warning(
+                    "Transient TG error (attempt %d/%d).",
+                    attempt,
+                    self.MAX_RETRIES,
+                    exc_info=True,
+                )
+                if attempt < self.MAX_RETRIES:
+                    await asyncio.sleep(2 ** (attempt - 1))
+            except (
+                TelegramBadRequest,
+                TelegramEntityTooLarge,
+                TelegramForbiddenError,
+                TelegramNotFound,
+                TelegramUnauthorizedError,
+            ) as exc:
+                raise PermanentNotificationError(str(exc)) from exc
             except Exception:
-                logger.error("Failed to send TG notification.", exc_info=True)
-                return
-        logger.error("Exhausted TG notification retries, message dropped.")
+                logger.exception("Failed to send TG notification.")
+                return False
+        logger.error(
+            "Telegram delivery attempt exhausted; the durable outbox will retry it."
+        )
+        return False

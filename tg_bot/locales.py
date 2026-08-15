@@ -1,11 +1,11 @@
 import logging
-from typing import Any, Dict, FrozenSet
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_LANGUAGES: FrozenSet[str] = frozenset({"en", "zh"})
+SUPPORTED_LANGUAGES: frozenset[str] = frozenset({"en", "zh"})
 
-MESSAGES: Dict[str, Dict[str, str]] = {
+MESSAGES: dict[str, dict[str, str]] = {
     "en": {
         "welcome": (
             "👋 Welcome to Hyperliquid Monitor!\n\n"
@@ -31,6 +31,7 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "del_success": "🗑️ Successfully removed <code>{address}</code> from monitoring.",
         "del_not_found": "⚠️ Address not found in monitoring list.",
         "list_empty": "📭 No addresses are currently being monitored.",
+        "list_no_results": "🔍 No address or remark matched your search.",
         "list_header": "📋 <b>Monitored Addresses:</b>\n\n",
         "tx_alert": (
             "🚨 Trade Alert\n"
@@ -56,20 +57,18 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "Remaining Sz: {sz}\n"
             "Original Sz: {orig_sz}\n"
             "Order ID: {oid}\n"
-            "Reduce Only: {reduce_only}\n"
-            "Post Only: {post_only}\n"
             "Type: {order_type}\n"
+            "Time in Force: {time_in_force}\n"
+            "Reduce Only: {reduce_only}\n"
             "Time: {time}"
         ),
-        "order_updates_batch_alert": (
-            "📝 Order Updates ({count})\n\n{items}"
-        ),
+        "order_updates_batch_alert": ("📝 Order Updates ({count})\n\n{items}"),
         "order_update_item": (
             "• {coin} | {dir} | Status: {status}\n"
             "  Address: <code>{address}</code>\n"
             "  Limit Px: {limit_px} | Remaining: {sz} / Original: {orig_sz}\n"
-            "  Order ID: {oid} | Reduce Only: {reduce_only} | Post Only: {post_only}\n"
-            "  Type: {order_type}\n"
+            "  Order ID: {oid} | Reduce Only: {reduce_only}\n"
+            "  Type: {order_type} | TIF: {time_in_force}\n"
             "  Time: {time}"
         ),
         "funding_alert": (
@@ -118,7 +117,7 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "position_detail": (
             "• <b>{coin}</b> | {pos_dir} {szi}\n"
             "  Lev: {lev_val}x ({lev_dir}) | Max: {max_leverage}x\n"
-            "  Entry: {entry_px:.4f} | Liq: {liquidation_px:.4f}\n"
+            "  Entry: {entry_px} | Liq: {liquidation_px}\n"
             "  Value: ${position_value:.2f}\n"
             "  uPnL: ${unrealized_pnl:.2f} (ROE: {roe:.2%})\n"
             "  Funding: ${funding_all:.2f}\n\n"
@@ -128,9 +127,12 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "  Limit Px: {limit_px}\n"
             "  Size: {sz} / {orig_sz}\n"
             "  Order ID: {oid}\n"
-            "  Reduce Only: {reduce_only}\n"
-            "  Post Only: {post_only}\n"
             "  Type: {order_type}\n"
+            "  Time in Force: {time_in_force}\n"
+            "  Reduce Only: {reduce_only}\n"
+            "  Trigger: {trigger_condition}\n"
+            "  Trigger Px: {trigger_px}\n"
+            "  Position TP/SL: {position_tpsl}\n"
             "  Time: {time}\n\n"
         ),
         "orders_result": "📝 <b>Open Orders:</b> {address_display}\n\n{orders}",
@@ -140,16 +142,23 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "btn_note": "📝 Remark",
         "btn_delete": "🗑️ Delete",
         "delete_success": "✅ Successfully removed {address}.",
+        "delete_confirm": "⚠️ Remove <code>{address}</code> from monitoring? This does not affect the wallet itself.",
+        "btn_confirm_delete": "✅ Confirm removal",
+        "btn_cancel": "Cancel",
         "btn_back": "🔙 Back",
         "stats_result": "📊 <b>Performance Stats:</b> {address_display}\n\n{stats}",
         "stats_item": "<b>{period}</b>\nPnL: {pnl} (ROI: {roi})\nVolume: {vol}\n\n",
         "no_positions": "No active positions.",
         "no_orders": "No open orders.",
         "fetch_failed": "❌ Failed to fetch data. Please try again.",
+        "operation_failed": "❌ Operation failed. Nothing was changed; please try again.",
+        "ws_capacity_reached": "❌ Hyperliquid allows at most {limit} realtime addresses per IP. Remove an address before adding another.",
+        "ws_capacity_startup": "⚠️ Hyperliquid realtime limit reached: {active} addresses are active and {skipped} are inactive. Remove an active address to promote the next one.",
         "set_note_prompt": "Please reply to this message with the remark for address <code>{address}</code>.\n(Send <code>-</code> to clear the remark, or <code>/cancel</code> to cancel)",
         "set_note_success": "✅ Remark for <code>{address}</code> has been updated.",
         "set_note_cleared": "✅ Remark for <code>{address}</code> has been cleared.",
         "set_note_cancelled": "🚫 Operation cancelled.",
+        "note_too_long": "❌ Remark is too long. Please keep it within {max_length} characters.",
         "settings_global_title": "⚙️ <b>Global Notification Settings</b>\nToggle global alerts below. These act as defaults for all monitored addresses.",
         "settings_user_title": "⚙️ <b>Address Notification Settings</b>\n<code>{address}</code>\nConfigure overrides for this specific address.",
         "btn_settings": "⚙️ Settings",
@@ -166,29 +175,24 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "welcome": (
             "👋 <b>欢迎使用 Hyperliquid Monitor！</b>\n\n"
             "我是一个专为高效而生的地址追踪助手。以下是我的全部超能力：\n\n"
-            
             "➕ <b>1. 极速添加与备注 (/add)</b>\n"
             "你可以随时输入 <code>/add &lt;地址&gt;</code> 来监控一个钱包，但我支持更多高端玩法：\n"
             "• <b>单次加备注</b>：<code>/add 0x123... 巨鲸1号</code>\n"
             "• <b>批量精细备注</b>：<code>/add 0x111 玩家A, 0x222 玩家B</code> (逗号或空格隔开都行)\n"
             "• <b>批量统一备注</b>：发一堆地址，只在末尾写一句话，比如 <code>/add 0x111, 0x222, 0x333 顶级胜率组合</code>，我会把这个备注赋予前面的所有地址！\n\n"
-            
             "➖ <b>2. 批量移除 (/del)</b>\n"
             "想删就删，毫不拖泥带水：\n"
             "• <b>单个删除</b>：<code>/del 0x123...</code>\n"
             "• <b>批量删除</b>：直接丢一堆地址给我 <code>/del 0x111 0x222 0x333</code>，瞬间清理干净。\n\n"
-            
             "🗂 <b>3. 智能地址库面板 (/list)</b>\n"
             "我的核心控制台，告别繁琐的命令：\n"
             "• <b>无缝翻页</b>：采用 10 项/页 的精美面板。你可以点击底部的 ⬅️ ➡️，也可以直接输入 <code>/list 3</code> 飞跃到第 3 页。\n"
             "• <b>全局搜索</b>：忘了地址？没关系。输入 <code>/list 巨鲸</code>，我会瞬间筛选出名字或地址里带有该词的所有记录！\n"
             "• <b>一站式操作</b>：点击面板里的任何地址，你会看到详细的 资产、战绩、挂单... 并且，你可以直接在详情页点击 <b>[📝修改备注]</b> 甚至是 <b>[🗑️移除地址]</b>，操作完后自动退回列表页，永远不会迷路。\n\n"
-            
             "🔔 <b>4. 通知阈值过滤 (/set_filter)</b>\n"
             "受够了微小的变动推送？\n"
             "• 输入 <code>/set_filter 50000</code>，只有金额变动超过 $50,000 才会打扰你。\n"
             "• 输入 <code>/set_filter 0</code>，则关闭过滤，全量推送。\n\n"
-            
             "💡 <b>隐藏细节</b>：\n"
             "遇到长名字或者手机排版问题？别担心，我内置了<b>智能折叠排版</b>，而且所有的十六进制 0x 地址，都可以点击一键复制！"
         ),
@@ -208,6 +212,7 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "del_success": "🗑️ 已成功将 <code>{address}</code> 移出监控。",
         "del_not_found": "⚠️ 监控列表中未找到该地址。",
         "list_empty": "📭 当前没有监控任何地址。",
+        "list_no_results": "🔍 没有找到匹配的地址或备注。",
         "list_header": "📋 <b>当前监控地址：</b>\n\n",
         "tx_alert": (
             "🚨 交易提醒\n"
@@ -233,20 +238,18 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "当前剩余数量: {sz}\n"
             "初始委托数量: {orig_sz}\n"
             "订单 ID: {oid}\n"
-            "只减仓: {reduce_only}\n"
-            "被动委托: {post_only}\n"
             "订单类型: {order_type}\n"
+            "有效方式: {time_in_force}\n"
+            "只减仓: {reduce_only}\n"
             "更新时间: {time}"
         ),
-        "order_updates_batch_alert": (
-            "📝 订单状态更新 (共 {count} 条)\n\n{items}"
-        ),
+        "order_updates_batch_alert": ("📝 订单状态更新 (共 {count} 条)\n\n{items}"),
         "order_update_item": (
             "• {coin} | {dir} | 状态: {status}\n"
             "  地址: <code>{address}</code>\n"
             "  限价: {limit_px} | 剩余: {sz} / 初始: {orig_sz}\n"
-            "  订单 ID: {oid} | 只减仓: {reduce_only} | 被动: {post_only}\n"
-            "  订单类型: {order_type}\n"
+            "  订单 ID: {oid} | 只减仓: {reduce_only}\n"
+            "  订单类型: {order_type} | 有效方式: {time_in_force}\n"
             "  时间: {time}"
         ),
         "funding_alert": (
@@ -295,7 +298,7 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "position_detail": (
             "• <b>{coin}</b> | {pos_dir} {szi}\n"
             "  杠杆: {lev_val}x ({lev_dir}) | 最大: {max_leverage}x\n"
-            "  开仓价: {entry_px:.4f} | 强平价: {liquidation_px:.4f}\n"
+            "  开仓价: {entry_px} | 强平价: {liquidation_px}\n"
             "  名义价值: ${position_value:.2f}\n"
             "  未实现盈亏: ${unrealized_pnl:.2f} (ROE: {roe:.2%})\n"
             "  累计资金费: ${funding_all:.2f}\n\n"
@@ -305,9 +308,12 @@ MESSAGES: Dict[str, Dict[str, str]] = {
             "  限价: {limit_px}\n"
             "  剩余数量: {sz} (初始数量: {orig_sz})\n"
             "  订单 ID: {oid}\n"
-            "  只减仓: {reduce_only}\n"
-            "  被动委托: {post_only}\n"
             "  订单类型: {order_type}\n"
+            "  有效方式: {time_in_force}\n"
+            "  只减仓: {reduce_only}\n"
+            "  触发条件: {trigger_condition}\n"
+            "  触发价格: {trigger_px}\n"
+            "  仓位止盈止损: {position_tpsl}\n"
             "  下单时间: {time}\n\n"
         ),
         "orders_result": "📝 <b>当前挂单:</b> {address_display}\n\n{orders}",
@@ -317,16 +323,23 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "btn_note": "📝 修改备注",
         "btn_delete": "🗑️ 移除地址",
         "delete_success": "✅ 已成功移除地址 {address}。",
+        "delete_confirm": "⚠️ 确定将 <code>{address}</code> 移出监控吗？此操作不会影响钱包本身。",
+        "btn_confirm_delete": "✅ 确认移除",
+        "btn_cancel": "取消",
         "btn_back": "🔙 返回列表",
         "stats_result": "📊 <b>历史战绩:</b> {address_display}\n\n{stats}",
         "stats_item": "<b>【{period}】</b>\n净盈亏: {pnl} (ROI: {roi})\n交易量: {vol}\n\n",
         "no_positions": "暂无活跃持仓。",
         "no_orders": "暂无挂单。",
         "fetch_failed": "❌ 获取数据失败，请稍后再试。",
+        "operation_failed": "❌ 操作失败，数据未被修改，请稍后重试。",
+        "ws_capacity_reached": "❌ Hyperliquid 每个 IP 最多允许实时监控 {limit} 个地址。请先移除一个地址再添加。",
+        "ws_capacity_startup": "⚠️ 已达到 Hyperliquid 实时监控上限：{active} 个地址正在监控，另有 {skipped} 个地址暂未启用。移除活跃地址后会自动补位。",
         "set_note_prompt": "👇 请直接发送你想为地址 <code>{address}</code> 设置的备注内容。\n（发送 <code>-</code> 减号清空备注，发送 <code>/cancel</code> 取消操作）",
         "set_note_success": "✅ 地址 <code>{address}</code> 的备注已更新。",
         "set_note_cleared": "✅ 地址 <code>{address}</code> 的备注已清空。",
         "set_note_cancelled": "🚫 操作已取消。",
+        "note_too_long": "❌ 备注过长，请控制在 {max_length} 个字符以内。",
         "settings_global_title": "⚙️ <b>全局通知设置</b>\n在此统一管理各类通知的全局开关。该设置将作为所有地址的默认行为。",
         "settings_user_title": "⚙️ <b>独立通知设置</b>\n<code>{address}</code>\n在此为该地址进行精细控制。开启或关闭将无视全局设置。",
         "btn_settings": "⚙️ 通知设置",
@@ -347,27 +360,83 @@ def _lang_code(lang_code: str) -> str:
     return "zh" if lang_code and "zh" in lang_code.lower() else "en"
 
 
-ORDER_STATUS_LABELS_ZH: Dict[str, str] = {
+ORDER_STATUS_LABELS_ZH: dict[str, str] = {
     "open": "已挂单 (open)",
     "filled": "已成交 (filled)",
     "canceled": "已撤销 (canceled)",
     "cancelled": "已撤销 (cancelled)",
     "triggered": "已触发 (triggered)",
     "rejected": "已拒绝 (rejected)",
+    "margincanceled": "保证金不足，已撤单 (marginCanceled)",
+    "vaultwithdrawalcanceled": "金库提款导致撤单 (vaultWithdrawalCanceled)",
+    "openinterestcapcanceled": "达到持仓上限，已撤单 (openInterestCapCanceled)",
+    "selftradecanceled": "防止自成交，已撤单 (selfTradeCanceled)",
+    "reduceonlycanceled": "无法继续减仓，已撤单 (reduceOnlyCanceled)",
+    "siblingfilledcanceled": "关联止盈/止损已成交，已撤单 (siblingFilledCanceled)",
+    "delistedcanceled": "资产下架，已撤单 (delistedCanceled)",
+    "liquidatedcanceled": "账户强平，已撤单 (liquidatedCanceled)",
+    "scheduledcancel": "定时撤单已触发 (scheduledCancel)",
+    "tickrejected": "价格精度无效，已拒绝 (tickRejected)",
+    "mintradentlrejected": "低于最小订单金额，已拒绝 (minTradeNtlRejected)",
+    "perpmarginrejected": "保证金不足，已拒绝 (perpMarginRejected)",
+    "reduceonlyrejected": "只减仓条件不成立，已拒绝 (reduceOnlyRejected)",
+    "badalopxrejected": "仅挂单会立即成交，已拒绝 (badAloPxRejected)",
+    "ioccancelrejected": "IOC 无法成交，已取消 (iocCancelRejected)",
+    "badtriggerpxrejected": "止盈/止损触发价无效，已拒绝 (badTriggerPxRejected)",
+    "marketordernoliquidityrejected": "市价单流动性不足，已拒绝 (marketOrderNoLiquidityRejected)",
+    "positionincreaseatopeninterestcaprejected": "达到持仓上限，禁止加仓 (positionIncreaseAtOpenInterestCapRejected)",
+    "positionflipatopeninterestcaprejected": "达到持仓上限，禁止反向开仓 (positionFlipAtOpenInterestCapRejected)",
+    "tooaggressiveatopeninterestcaprejected": "达到持仓上限且价格过激，已拒绝 (tooAggressiveAtOpenInterestCapRejected)",
+    "openinterestincreaserejected": "禁止增加未平仓量，已拒绝 (openInterestIncreaseRejected)",
+    "insufficientspotbalancerejected": "现货余额不足，已拒绝 (insufficientSpotBalanceRejected)",
+    "oraclerejected": "价格偏离预言机，已拒绝 (oracleRejected)",
+    "perpmaxpositionrejected": "超过永续合约最大仓位，已拒绝 (perpMaxPositionRejected)",
     "unknown": "未知 (unknown)",
 }
 
-ORDER_TYPE_LABELS_ZH: Dict[str, str] = {
+ORDER_TYPE_LABELS_ZH: dict[str, str] = {
     "limit": "限价单",
     "market": "市价单",
     "stop limit": "止损限价单",
     "stop market": "止损市价单",
+    "take limit": "止盈限价单",
+    "take market": "止盈市价单",
     "trigger limit": "触发限价单",
     "trigger market": "触发市价单",
     "iceberg": "冰山委托",
-    "alo": "主动挂单",
-    "ioc": "立即成交或取消",
-    "gtc": "一直有效",
+}
+
+TIME_IN_FORCE_LABELS_ZH: dict[str, str] = {
+    "alo": "仅挂单 / 只做 Maker (ALO)",
+    "ioc": "立即成交，否则取消 (IOC)",
+    "gtc": "一直有效，直到成交或撤销 (GTC)",
+    "frontendmarket": "前端市价执行 (FrontendMarket)",
+}
+
+FILL_DIRECTION_LABELS_ZH: dict[str, str] = {
+    "open long": "开多",
+    "close long": "平多",
+    "open short": "开空",
+    "close short": "平空",
+    "buy": "买入",
+    "sell": "卖出",
+}
+
+LEDGER_EVENT_LABELS_ZH: dict[str, str] = {
+    "deposit": "充值",
+    "withdraw": "提现",
+    "internaltransfer": "内部转账",
+    "subaccounttransfer": "子账户转账",
+    "liquidation": "强平结算",
+    "vaultcreate": "创建金库",
+    "vaultdeposit": "存入金库",
+    "vaultdistribution": "金库分配",
+    "vaultwithdraw": "金库提现",
+    "vaultleadercommission": "金库主理人佣金",
+    "spottransfer": "现货转账",
+    "accountclasstransfer": "账户类型划转",
+    "spotgenesis": "现货创世分配",
+    "rewardsclaim": "领取奖励",
 }
 
 
@@ -379,22 +448,66 @@ def format_order_status(status: Any, lang_code: str = "zh") -> str:
     """
     if _lang_code(lang_code) == "zh":
         key = str(status).strip().lower() if status else "unknown"
-        return ORDER_STATUS_LABELS_ZH.get(key, str(status) if status else "Unknown")
+        return ORDER_STATUS_LABELS_ZH.get(key, str(status) if status else "未知")
     return str(status) if status else "Unknown"
 
 
 def format_order_type(value: Any, lang_code: str = "zh") -> str:
     """Human-readable order type / time-in-force in the target language.
 
-    Hyperliquid order updates expose the order type via ``orderType``
-    (e.g. ``Limit``, ``Stop Market``); ``tif`` values (``Alo``/``Ioc``/``Gtc``)
-    are also understood.
+    Hyperliquid frontend order data exposes values such as ``Limit`` and
+    ``Stop Market`` via ``orderType``.
     """
     if not value:
-        return "Unknown"
+        return "接口未提供" if _lang_code(lang_code) == "zh" else "Not provided by API"
     if _lang_code(lang_code) == "zh":
         key = str(value).strip().lower()
         return ORDER_TYPE_LABELS_ZH.get(key, str(value))
+    return str(value)
+
+
+def format_time_in_force(value: Any, lang_code: str = "zh") -> str:
+    if not value:
+        return "接口未提供" if _lang_code(lang_code) == "zh" else "Not provided by API"
+    if _lang_code(lang_code) == "zh":
+        key = str(value).strip().lower()
+        return TIME_IN_FORCE_LABELS_ZH.get(key, str(value))
+    return str(value)
+
+
+def format_boolean(value: Any, lang_code: str = "zh", *, provided: bool = True) -> str:
+    if not provided:
+        return "接口未提供" if _lang_code(lang_code) == "zh" else "Not provided by API"
+    if _lang_code(lang_code) == "zh":
+        return "是" if bool(value) else "否"
+    return "Yes" if bool(value) else "No"
+
+
+def format_order_side(value: Any, lang_code: str = "zh") -> str:
+    key = str(value).strip().upper() if value is not None else ""
+    if key == "B":
+        return "买入 / 做多" if _lang_code(lang_code) == "zh" else "Buy"
+    if key == "A":
+        return "卖出 / 做空" if _lang_code(lang_code) == "zh" else "Sell"
+    return "未知方向" if _lang_code(lang_code) == "zh" else "Unknown side"
+
+
+def format_fill_direction(value: Any, lang_code: str = "zh") -> str:
+    if not value:
+        return "未知方向" if _lang_code(lang_code) == "zh" else "Unknown direction"
+    if _lang_code(lang_code) == "zh":
+        return FILL_DIRECTION_LABELS_ZH.get(str(value).strip().lower(), str(value))
+    return str(value)
+
+
+def format_ledger_event(value: Any, lang_code: str = "zh") -> str:
+    if not value:
+        return (
+            "未知账单类型" if _lang_code(lang_code) == "zh" else "Unknown ledger type"
+        )
+    if _lang_code(lang_code) == "zh":
+        key = str(value).strip().lower()
+        return LEDGER_EVENT_LABELS_ZH.get(key, str(value))
     return str(value)
 
 

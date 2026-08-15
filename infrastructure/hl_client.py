@@ -1,10 +1,10 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import aiohttp
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -25,12 +25,20 @@ class HyperliquidAPIError(Exception):
         super().__init__(f"Hyperliquid API {status} ({detail}): {body[:200]}")
 
 
+def _is_retryable(exc: BaseException) -> bool:
+    if isinstance(exc, (aiohttp.ClientError, TimeoutError)):
+        return True
+    return isinstance(exc, HyperliquidAPIError) and (
+        exc.status == 429 or 500 <= exc.status < 600
+    )
+
+
 class HyperliquidClient:
     """Hyperliquid Info API client with shared aiohttp session lifecycle."""
 
-    def __init__(self, api_url: Optional[str] = None) -> None:
+    def __init__(self, api_url: str | None = None) -> None:
         self.api_url = api_url or settings.HL_API_URL
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
 
     async def start(self) -> None:
         """Create the shared aiohttp session. Call once at application startup."""
@@ -53,9 +61,7 @@ class HyperliquidClient:
             )
         return self._session
 
-    async def _post(
-        self, payload: Dict[str, Any], user_address: str = ""
-    ) -> Any:
+    async def _post(self, payload: dict[str, Any], user_address: str = "") -> Any:
         """Send a POST request and return parsed JSON, raising on errors."""
         session = self._ensure_session()
         async with session.post(self.api_url, json=payload) as response:
@@ -67,10 +73,10 @@ class HyperliquidClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((aiohttp.ClientError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable),
         reraise=True,
     )
-    async def get_clearinghouse_state(self, user_address: str) -> Dict[str, Any]:
+    async def get_clearinghouse_state(self, user_address: str) -> dict[str, Any]:
         """Fetches the clearinghouse state (margin, positions) for an address."""
         payload = {
             "type": "clearinghouseState",
@@ -81,13 +87,13 @@ class HyperliquidClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((aiohttp.ClientError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable),
         reraise=True,
     )
-    async def get_open_orders(self, user_address: str) -> List[Dict[str, Any]]:
-        """Fetches the current open orders for an address."""
+    async def get_open_orders(self, user_address: str) -> list[dict[str, Any]]:
+        """Fetch open orders with the descriptive fields used by the UI."""
         payload = {
-            "type": "openOrders",
+            "type": "frontendOpenOrders",
             "user": user_address,
         }
         data = await self._post(payload, user_address)
@@ -96,14 +102,43 @@ class HyperliquidClient:
     @retry(
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=1, min=2, max=10),
-        retry=retry_if_exception_type((aiohttp.ClientError, TimeoutError)),
+        retry=retry_if_exception(_is_retryable),
         reraise=True,
     )
-    async def get_portfolio(self, user_address: str) -> List[Any]:
+    async def get_portfolio(self, user_address: str) -> list[Any]:
         """Fetches the historical portfolio stats (PnL, equity curve) for an address."""
         payload = {
             "type": "portfolio",
             "user": user_address,
         }
+        data = await self._post(payload, user_address)
+        return data if isinstance(data, list) else []
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception(_is_retryable),
+        reraise=True,
+    )
+    async def get_order_status(
+        self, user_address: str, oid: int | str
+    ) -> dict[str, Any] | None:
+        """Fetch a full order record, including type/TIF fields when available."""
+        payload = {"type": "orderStatus", "user": user_address, "oid": oid}
+        data = await self._post(payload, user_address)
+        if not isinstance(data, dict) or data.get("status") != "order":
+            return None
+        wrapped = data.get("order", {})
+        return wrapped if isinstance(wrapped, dict) else None
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception(_is_retryable),
+        reraise=True,
+    )
+    async def get_historical_orders(self, user_address: str) -> list[dict[str, Any]]:
+        """Return recent order history for reconnect gap recovery."""
+        payload = {"type": "historicalOrders", "user": user_address}
         data = await self._post(payload, user_address)
         return data if isinstance(data, list) else []
