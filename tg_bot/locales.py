@@ -385,21 +385,21 @@ ORDER_STATUS_LABELS_ZH: dict[str, str] = {
     "cancelled": "已撤销 (cancelled)",
     "triggered": "已触发 (triggered)",
     "rejected": "已拒绝 (rejected)",
-    "margincanceled": "保证金不足，已撤单 (marginCanceled)",
-    "vaultwithdrawalcanceled": "金库提款导致撤单 (vaultWithdrawalCanceled)",
-    "openinterestcapcanceled": "达到持仓上限，已撤单 (openInterestCapCanceled)",
-    "selftradecanceled": "防止自成交，已撤单 (selfTradeCanceled)",
-    "reduceonlycanceled": "无法继续减仓，已撤单 (reduceOnlyCanceled)",
-    "siblingfilledcanceled": "关联止盈/止损已成交，已撤单 (siblingFilledCanceled)",
-    "delistedcanceled": "资产下架，已撤单 (delistedCanceled)",
-    "liquidatedcanceled": "账户强平，已撤单 (liquidatedCanceled)",
-    "scheduledcancel": "定时撤单已触发 (scheduledCancel)",
-    "tickrejected": "价格精度无效，已拒绝 (tickRejected)",
-    "mintradentlrejected": "低于最小订单金额，已拒绝 (minTradeNtlRejected)",
-    "perpmarginrejected": "保证金不足，已拒绝 (perpMarginRejected)",
-    "reduceonlyrejected": "只减仓条件不成立，已拒绝 (reduceOnlyRejected)",
-    "badalopxrejected": "仅挂单会立即成交，已拒绝 (badAloPxRejected)",
-    "perpmaxpositionrejected": "超过合约最大持仓限制，已拒绝 (perpMaxPositionRejected)",
+    "margincanceled": "保证金不足撤单 (marginCanceled)",
+    "vaultwithdrawalcanceled": "金库提款撤单 (vaultWithdrawalCanceled)",
+    "openinterestcapcanceled": "达持仓上限撤单 (openInterestCapCanceled)",
+    "selftradecanceled": "防自成交撤单 (selfTradeCanceled)",
+    "reduceonlycanceled": "无法减仓撤单 (reduceOnlyCanceled)",
+    "siblingfilledcanceled": "关联订单成交撤单 (siblingFilledCanceled)",
+    "delistedcanceled": "资产下架撤单 (delistedCanceled)",
+    "liquidatedcanceled": "强平撤单 (liquidatedCanceled)",
+    "scheduledcancel": "定时撤单触发 (scheduledCancel)",
+    "tickrejected": "价格精度不符拒绝 (tickRejected)",
+    "mintradentlrejected": "低于最小金额拒绝 (minTradeNtlRejected)",
+    "perpmarginrejected": "保证金不足拒绝 (perpMarginRejected)",
+    "reduceonlyrejected": "只减仓不成立拒绝 (reduceOnlyRejected)",
+    "badalopxrejected": "ALO挂单即成交拒绝 (badAloPxRejected)",
+    "perpmaxpositionrejected": "超持仓上限拒绝 (perpMaxPositionRejected)",
     "unknown": "未知状态",
 }
 
@@ -417,15 +417,15 @@ ORDER_TYPE_LABELS_ZH: dict[str, str] = {
     "trigger limit": "触发限价单",
     "trigger market": "触发市价单",
     "iceberg": "冰山委托",
-    "twap": "TWAP委托",
+    "twap": "TWAP 委托",
     "trailing stop": "追踪止损单",
 }
 
 TIME_IN_FORCE_LABELS_ZH: dict[str, str] = {
-    "alo": "仅挂单 (Post-Only / ALO)",
-    "ioc": "立即成交或取消 (IOC)",
-    "gtc": "一直有效直到取消 (GTC)",
-    "frontendmarket": "前端市价有效 (Frontend Market)",
+    "alo": "仅挂单 (Post-Only)",
+    "ioc": "立即或取消 (IOC)",
+    "gtc": "一直有效 (GTC)",
+    "frontendmarket": "市价执行 (Market)",
 }
 
 FILL_DIRECTION_LABELS_ZH: dict[str, str] = {
@@ -449,12 +449,12 @@ LEDGER_EVENT_LABELS_ZH: dict[str, str] = {
     "liquidation": "强平结算",
     "vaultcreate": "创建金库",
     "vaultdeposit": "存入金库",
-    "vaultdistribution": "金库分配",
+    "vaultdistribution": "金库分红",
     "vaultwithdraw": "金库提现",
-    "vaultleadercommission": "金库主理人佣金",
-    "spottransfer": "现货转账",
-    "accountclasstransfer": "账户类型划转",
-    "spotgenesis": "现货创世分配",
+    "vaultleadercommission": "金库管理费",
+    "spottransfer": "现货划转",
+    "accountclasstransfer": "账户划转",
+    "spotgenesis": "创世空投",
     "rewardsclaim": "领取奖励",
 }
 
@@ -557,7 +557,7 @@ def format_order_status(status: Any, lang_code: str = "zh") -> str:
 def format_order_type(value: Any, lang_code: str = "zh") -> str:
     """Human-readable order type / time-in-force in the target language."""
     if not value:
-        return "接口未提供" if _lang_code(lang_code) == "zh" else "Not provided by API"
+        return "普通订单" if _lang_code(lang_code) == "zh" else "Standard Order"
     if _lang_code(lang_code) == "zh":
         key = str(value).strip().lower()
         return ORDER_TYPE_LABELS_ZH.get(key, str(value))
@@ -576,11 +576,14 @@ def format_time_in_force(
             marker in normalized_type
             for marker in ("stop", "take profit", "take", "trigger")
         ):
-            readable_type = format_order_type(order_type, lang_code)
             if _lang_code(lang_code) == "zh":
-                return f"不适用（{readable_type}触发后按市价执行）"
-            return f"N/A ({readable_type} executes at market when triggered)"
-        return "接口未提供" if _lang_code(lang_code) == "zh" else "Not provided by API"
+                if "take" in normalized_type:
+                    return "市价止盈"
+                if "stop" in normalized_type:
+                    return "市价止损"
+                return "市价执行"
+            return "Market on Trigger"
+        return "一直有效 (GTC)" if _lang_code(lang_code) == "zh" else "GTC"
     if _lang_code(lang_code) == "zh":
         key = str(value).strip().lower()
         return TIME_IN_FORCE_LABELS_ZH.get(key, str(value))
@@ -589,7 +592,7 @@ def format_time_in_force(
 
 def format_boolean(value: Any, lang_code: str = "zh", *, provided: bool = True) -> str:
     if not provided:
-        return "接口未提供" if _lang_code(lang_code) == "zh" else "Not provided by API"
+        return "否" if _lang_code(lang_code) == "zh" else "No"
     if _lang_code(lang_code) == "zh":
         return "是" if bool(value) else "否"
     return "Yes" if bool(value) else "No"

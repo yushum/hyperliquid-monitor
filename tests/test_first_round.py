@@ -58,7 +58,7 @@ class CapturingNotifier(BaseNotifier):
 
 class FormattingTests(unittest.TestCase):
     def test_missing_order_type_is_explained(self) -> None:
-        self.assertEqual(format_order_type(None, "zh"), "接口未提供")
+        self.assertEqual(format_order_type(None, "zh"), "普通订单")
         self.assertNotIn("Unknown", format_order_type(None, "zh"))
 
     def test_order_labels_are_human_readable(self) -> None:
@@ -67,17 +67,17 @@ class FormattingTests(unittest.TestCase):
         self.assertIn("仅挂单", format_time_in_force("Alo", "zh"))
         self.assertEqual(
             format_time_in_force(None, "zh", order_type="Stop Market"),
-            "不适用（止损市价单触发后按市价执行）",
+            "市价止损",
         )
         self.assertEqual(
             format_time_in_force(None, "zh", order_type="Take Profit Market"),
-            "不适用（止盈市价单触发后按市价执行）",
+            "市价止盈",
         )
-        self.assertEqual(format_time_in_force(None, "zh"), "接口未提供")
+        self.assertEqual(format_time_in_force(None, "zh"), "一直有效 (GTC)")
         self.assertIn("保证金不足", format_order_status("marginCanceled", "zh"))
         self.assertEqual(format_order_side("invalid", "zh"), "未知方向")
         self.assertEqual(format_fill_direction("Open Long", "zh"), "开多")
-        self.assertEqual(format_boolean(False, "zh", provided=False), "接口未提供")
+        self.assertEqual(format_boolean(False, "zh", provided=False), "否")
 
     def test_html_and_time_are_safe_and_explicit(self) -> None:
         self.assertEqual(escape_html("<主力 & 观察>"), "&lt;主力 &amp; 观察&gt;")
@@ -219,8 +219,8 @@ class MonitorTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(len(monitor._order_buffer), 1)
         item = monitor._order_buffer[0]
-        self.assertEqual(item["order_type"], "接口未提供")
-        self.assertEqual(item["reduce_only"], "接口未提供")
+        self.assertEqual(item["order_type"], "普通订单")
+        self.assertEqual(item["reduce_only"], "否")
 
     async def test_liquidation_schema_produces_alert(self) -> None:
         notifier = CapturingNotifier()
