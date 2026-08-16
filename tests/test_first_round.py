@@ -13,14 +13,27 @@ from infrastructure import db as database
 from infrastructure.hl_client import HyperliquidClient
 from services.monitor import BlockchainMonitor
 from services.notifier import BaseNotifier
-from tg_bot.formatting import escape_html, format_timestamp, split_message
+from tg_bot.formatting import (
+    escape_html,
+    format_address_display,
+    format_crypto_amount,
+    format_pnl,
+    format_price,
+    format_timestamp,
+    format_usd,
+    split_message,
+)
 from tg_bot.locales import (
     format_boolean,
+    format_fill_badge,
     format_fill_direction,
     format_order_side,
+    format_order_side_badge,
     format_order_status,
+    format_order_status_badge,
     format_order_type,
     format_time_in_force,
+    get_text,
 )
 
 
@@ -79,6 +92,88 @@ class FormattingTests(unittest.TestCase):
         self.assertEqual(chunks, ["a" * 5, "a" * 5, "a"])
         self.assertTrue(all(chunks))
         self.assertTrue(all(len(chunk) <= 5 for chunk in chunks))
+
+    def test_new_formatting_helpers(self) -> None:
+        # Address display
+        self.assertEqual(
+            format_address_display("0x1234567890abcdef1234567890abcdef12345678", "Whale", "zh"),
+            "<b>Whale</b> (<code>0x1234567890abcdef1234567890abcdef12345678</code>)",
+        )
+        self.assertEqual(
+            format_address_display("0x1234567890abcdef1234567890abcdef12345678", None, "zh"),
+            "<code>0x1234567890abcdef1234567890abcdef12345678</code>",
+        )
+
+        # Price formatting
+        self.assertEqual(format_price(65432.1), "$65,432.10")
+        self.assertEqual(format_price(3.5), "$3.50")
+        self.assertEqual(format_price(0.001234), "$0.001234")
+
+        # Crypto amount formatting
+        self.assertEqual(format_crypto_amount(1000.0), "1,000")
+        self.assertEqual(format_crypto_amount(2.5000), "2.5")
+        self.assertEqual(format_crypto_amount(0), "0")
+
+        # PnL formatting
+        self.assertIn("🟢", format_pnl(1234.56, "zh"))
+        self.assertIn("+$1,234.56", format_pnl(1234.56, "zh"))
+        self.assertIn("🔴", format_pnl(-500.0, "zh"))
+        self.assertIn("-$500.00", format_pnl(-500.0, "zh"))
+
+        # Badges
+        self.assertEqual(format_fill_badge("Open Long", "zh"), "🟢 开多")
+        self.assertEqual(format_fill_badge("Close Short", "zh"), "🟢 平空")
+        self.assertEqual(format_fill_badge("Open Short", "zh"), "🔴 开空")
+        self.assertEqual(format_fill_badge("Close Long", "zh"), "🔴 平多")
+        self.assertEqual(format_order_side_badge("B", "zh"), "🟢 买入 / 做多")
+        self.assertEqual(format_order_side_badge("A", "zh"), "🔴 卖出 / 做空")
+        self.assertIn("全部成交", format_order_status_badge("filled", "zh"))
+
+    def test_alert_templates_first_line_intuitiveness(self) -> None:
+        # tx_alert
+        tx_msg = get_text(
+            "zh",
+            "tx_alert",
+            dir_badge="🟢 开多",
+            coin="BTC",
+            notional="$50,000.00",
+            address_display="<b>Whale</b> (<code>0x123...</code>)",
+            price="5,000.00",
+            size="0.7692",
+            pnl_line="",
+            fee="0.00",
+            role="吃单方 (Taker)",
+            time="2026-08-17 12:00:00 CST",
+            extra_line="",
+        )
+        first_line = tx_msg.splitlines()[0]
+        self.assertIn("🟢 开多 BTC", first_line)
+        self.assertIn("$50,000.00", first_line)
+        second_line = tx_msg.splitlines()[1]
+        self.assertIn("Whale", second_line)
+
+        # order_update_alert
+        order_msg = get_text(
+            "zh",
+            "order_update_alert",
+            status_badge="🟢 全部成交 (Filled)",
+            coin="ETH",
+            dir_badge="🟢 买入 / 做多",
+            address_display="<b>Whale</b> (<code>0x123...</code>)",
+            price="$3,000.00",
+            orig_sz="10",
+            sz="0",
+            notional="$50,000.00",
+            order_type="限价单",
+            time_in_force="一直有效，直到成交或撤销 (GTC)",
+            reduce_only="否",
+            time="2026-08-17 12:00:00 CST",
+            oid=12345,
+        )
+        first_line_order = order_msg.splitlines()[0]
+        self.assertIn("全部成交", first_line_order)
+        self.assertIn("ETH", first_line_order)
+
 
 
 class ClientTests(unittest.IsolatedAsyncioTestCase):

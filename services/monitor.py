@@ -11,6 +11,7 @@ import aiohttp
 from core.config import settings
 from infrastructure.db import (
     cleanup_event_history,
+    get_all_address_notes,
     get_all_address_settings,
     get_due_notifications,
     get_last_fill_time,
@@ -26,13 +27,25 @@ from infrastructure.db import (
     update_last_order_time,
 )
 from services.notifier import BaseNotifier, PermanentNotificationError
-from tg_bot.formatting import escape_html, format_timestamp, unavailable
+from tg_bot.formatting import (
+    escape_html,
+    format_address_display,
+    format_crypto_amount,
+    format_pnl,
+    format_price,
+    format_timestamp,
+    format_usd,
+    unavailable,
+)
 from tg_bot.locales import (
     format_boolean,
+    format_fill_badge,
     format_fill_direction,
     format_ledger_event,
     format_order_side,
+    format_order_side_badge,
     format_order_status,
+    format_order_status_badge,
     format_order_type,
     format_time_in_force,
     get_text,
@@ -75,6 +88,7 @@ class BlockchainMonitor:
         self._websockets: dict[str, aiohttp.ClientWebSocketResponse] = {}
         self._monitored_addresses: dict[str, dict] = {}
         self._address_subscribed_at: dict[str, int] = {}
+        self._address_notes: dict[str, str | None] = {}
         self._global_settings: dict[str, bool] = {}
 
         # Buffer for aggregating split fills within a short time window
@@ -225,6 +239,7 @@ class BlockchainMonitor:
             "notify_ledger": (await get_setting("global_notify_ledger", "1")) == "1",
         }
 
+        self._address_notes = await get_all_address_notes()
         self._monitored_addresses = await get_all_address_settings()
         active_addresses = list(self._monitored_addresses)[: settings.MAX_WS_USERS]
         for addr in active_addresses:
@@ -311,7 +326,25 @@ class BlockchainMonitor:
 
         logger.info("Hyperliquid WS monitor stopped.")
 
-    async def subscribe(self, address: str, addr_settings: dict | None = None) -> None:
+    def get_address_note(self, address: str) -> str | None:
+        return self._address_notes.get(address.lower())
+
+    def set_address_note(self, address: str, note: str | None) -> None:
+        if note is None or str(note).strip() == "":
+            self._address_notes.pop(address.lower(), None)
+        else:
+            self._address_notes[address.lower()] = str(note).strip()
+
+    def format_address_display(self, address: str, lang_code: str = "zh") -> str:
+        note = self.get_address_note(address)
+        return format_address_display(address, note, lang_code)
+
+    async def subscribe(
+        self,
+        address: str,
+        addr_settings: dict | None = None,
+        note: str | None = None,
+    ) -> None:
         """Dynamically add an address to monitor via WS."""
         address = address.lower()
         if (
@@ -323,6 +356,8 @@ class BlockchainMonitor:
             )
         if addr_settings is None:
             addr_settings = {}
+        if note is not None:
+            self.set_address_note(address, note)
         self._monitored_addresses[address] = addr_settings
         self._address_subscribed_at[address] = int(time.time() * 1000)
         if self._running:
@@ -333,6 +368,7 @@ class BlockchainMonitor:
         address = address.lower()
         self._monitored_addresses.pop(address, None)
         self._address_subscribed_at.pop(address, None)
+        self.set_address_note(address, None)
         ws = self._websockets.pop(address, None)
         if ws and not ws.closed:
             await ws.close()
@@ -664,7 +700,9 @@ class BlockchainMonitor:
 
         lang = settings.BOT_LANGUAGE
         coin = escape_html(fills[0].get("coin") or unavailable(lang))
-        trade_dir = escape_html(format_fill_direction(fills[0].get("dir"), lang))
+        raw_dir = fills[0].get("dir")
+        dir_badge = format_fill_badge(raw_dir, lang)
+        trade_dir = escape_html(format_fill_direction(raw_dir, lang))
 
         total_size = sum(_safe_float(f.get("sz", 0)) for f in fills)
         total_fee = sum(_safe_float(f.get("fee", 0)) for f in fills)
@@ -706,20 +744,47 @@ class BlockchainMonitor:
 
         msg = None
         if should_notify:
+            address_display = self.format_address_display(address, lang)
+            pnl_line = ""
+            if abs(total_closed_pnl) > 0.0001:
+                pnl_formatted = format_pnl(total_closed_pnl, lang)
+                if lang == "zh":
+                    pnl_line = f"💰 <b>平仓盈亏:</b> {pnl_formatted}\n"
+                else:
+                    pnl_line = f"💰 <b>Realized PnL:</b> {pnl_formatted}\n"
+
+            extra_parts = []
+            if oid:
+                if lang == "zh":
+                    extra_parts.append(f"🔗 <b>订单 ID:</b> <code>#{oid}</code>")
+                else:
+                    extra_parts.append(f"🔗 <b>Order ID:</b> <code>#{oid}</code>")
+            if tx_hash:
+                if lang == "zh":
+                    extra_parts.append(f"🔗 <b>交易哈希:</b> <code>{tx_hash}</code>")
+                else:
+                    extra_parts.append(f"🔗 <b>Tx Hash:</b> <code>{tx_hash}</code>")
+            extra_line = "\n".join(extra_parts)
+
             msg = get_text(
                 lang,
                 "tx_alert",
                 address=address,
+                address_display=address_display,
                 coin=coin,
                 dir=trade_dir,
-                price=f"{avg_price:.4f}",
-                size=f"{total_size:.4f}",
+                dir_badge=dir_badge,
+                price=format_price(avg_price),
+                size=format_crypto_amount(total_size),
+                notional=f"${total_notional:,.2f}",
                 closed_pnl=f"{total_closed_pnl:.4f}",
-                fee=f"{total_fee:.4f}",
+                pnl_line=pnl_line,
+                fee=f"${total_fee:,.4f}" if total_fee > 0 else "$0.00",
                 role=role,
                 oid=oid,
                 hash=tx_hash,
                 time=time_str,
+                extra_line=extra_line,
             )
         logger.info(
             "Aggregated WS fill for %s: %s %s size=%.4f",
@@ -774,10 +839,13 @@ class BlockchainMonitor:
                 continue
 
             coin = escape_html(order.get("coin") or unavailable(lang))
-            dir_str = escape_html(format_order_side(order.get("side"), lang))
+            raw_side = order.get("side")
+            dir_str = escape_html(format_order_side(raw_side, lang))
+            dir_badge = format_order_side_badge(raw_side, lang)
 
             raw_status = order_group.get("status", "unknown")
             status = escape_html(format_order_status(raw_status, lang))
+            status_badge = format_order_status_badge(raw_status, lang)
             limit_px = _safe_float(order.get("limitPx", "0"))
             sz = _safe_float(order.get("sz", "0"))
             orig_sz = _safe_float(order.get("origSz", "0"))
@@ -839,15 +907,24 @@ class BlockchainMonitor:
                 await update_last_order_time(address, int(ts or 0))
                 continue
 
+            address_display = self.format_address_display(address, lang) if address and address != get_text(lang, "addr_unknown_multi") else (
+                f"<i>{escape_html(address)}</i>" if address else "<i>未知</i>"
+            )
+
             item = {
                 "address": escape_html(address),
+                "address_display": address_display,
                 "address_raw": address,
                 "coin": coin,
                 "dir": dir_str,
+                "dir_badge": dir_badge,
                 "status": status,
+                "status_badge": status_badge,
                 "limit_px": f"{limit_px:,.4f}",
+                "price": format_price(limit_px),
                 "sz": f"{sz:,.4f}",
                 "orig_sz": f"{orig_sz:,.4f}",
+                "notional": f"${notional:,.2f}",
                 "oid": oid,
                 "reduce_only": reduce_only,
                 "order_type": order_type,
@@ -978,15 +1055,19 @@ class BlockchainMonitor:
         if not payload or payload.get("isSnapshot"):
             return
 
-        event_type = "未知事件" if settings.BOT_LANGUAGE == "zh" else "Unknown event"
+        lang = settings.BOT_LANGUAGE
+        event_type = "未知事件" if lang == "zh" else "Unknown event"
         address = ""
-        asset = "账户" if settings.BOT_LANGUAGE == "zh" else "Account"
+        asset = "账户" if lang == "zh" else "Account"
         extra = ""
+        notional_str = "$0.00"
+        account_val_str = "$0.00"
+        liquidator_display = "未知" if lang == "zh" else "Unknown"
         ts = int(time.time() * 1000)
 
         if "liquidation" in payload:
             liq = payload["liquidation"]
-            event_type = "账户强平" if settings.BOT_LANGUAGE == "zh" else "Liquidation"
+            event_type = "账户强平" if lang == "zh" else "Liquidation"
             address = str(liq.get("liquidated_user") or source_address or "")
             liquidator = str(liq.get("liquidator") or "")
             notional = abs(_safe_float(liq.get("liquidated_ntl_pos", 0)))
@@ -1003,7 +1084,15 @@ class BlockchainMonitor:
                 await record_events([(event_key, ts)])
                 return
 
-            if settings.BOT_LANGUAGE == "zh":
+            notional_str = f"${notional:,.2f}"
+            account_val_str = f"${account_value:,.2f}"
+            liquidator_display = (
+                f"<code>{escape_html(liquidator)}</code>"
+                if liquidator
+                else ("未知" if lang == "zh" else "Unknown")
+            )
+
+            if lang == "zh":
                 extra = (
                     f"被强平名义仓位: ${notional:,.2f}\n"
                     f"强平时账户价值: ${account_value:,.2f}\n"
@@ -1016,16 +1105,21 @@ class BlockchainMonitor:
                     f"Liquidator: <code>{escape_html(liquidator)}</code>\n"
                 )
 
-        time_str = format_timestamp(ts, settings.BOT_LANGUAGE)
+        time_str = format_timestamp(ts, lang)
 
         if address:
+            address_display = self.format_address_display(address, lang)
             msg = get_text(
-                settings.BOT_LANGUAGE,
+                lang,
                 "event_alert",
                 address=escape_html(address),
+                address_display=address_display,
                 event_type=event_type,
                 asset=asset,
                 extra=extra,
+                notional=notional_str,
+                account_value=account_val_str,
+                liquidator=liquidator_display,
                 time=time_str,
             )
             settings_address = source_address or address
@@ -1043,11 +1137,12 @@ class BlockchainMonitor:
         if not payload or payload.get("isSnapshot"):
             return
 
+        lang = settings.BOT_LANGUAGE
         user = str(payload.get("user") or source_address or "")
         fundings = payload.get("fundings", [])
 
         for f in fundings:
-            coin = escape_html(f.get("coin") or unavailable(settings.BOT_LANGUAGE))
+            coin = escape_html(f.get("coin") or unavailable(lang))
             usdc = _safe_float(f.get("usdc", "0"))
             szi = _safe_float(f.get("szi", "0"))
             funding_rate = _safe_float(f.get("fundingRate", "0"))
@@ -1067,15 +1162,28 @@ class BlockchainMonitor:
                 await record_events([(event_key, int(ts or 0))])
                 continue
 
-            time_str = format_timestamp(ts, settings.BOT_LANGUAGE)
+            time_str = format_timestamp(ts, lang)
+            address_display = self.format_address_display(user, lang)
+
+            if usdc > 0.000001:
+                payment_display = f"🟢 <code>+${usdc:,.4f}</code>"
+            elif usdc < -0.000001:
+                payment_display = f"🔴 <code>-${abs(usdc):,.4f}</code>"
+            else:
+                payment_display = "<code>$0.0000</code>"
+
+            szi_display = f"{format_crypto_amount(szi)} {coin}"
 
             msg = get_text(
-                settings.BOT_LANGUAGE,
+                lang,
                 "funding_alert",
                 address=escape_html(user),
+                address_display=address_display,
                 coin=coin,
                 payment=f"{usdc:,.4f}",
+                payment_display=payment_display,
                 szi=f"{szi:,.4f}",
+                szi_display=szi_display,
                 funding_rate=f"{funding_rate:.6%}",
                 time=time_str,
             )
@@ -1093,13 +1201,14 @@ class BlockchainMonitor:
         if not payload or payload.get("isSnapshot"):
             return
 
+        lang = settings.BOT_LANGUAGE
         user = str(payload.get("user") or source_address or "")
         updates = payload.get("updates", [])
 
         for u in updates:
             delta = u.get("delta", {})
             event_type = escape_html(
-                format_ledger_event(delta.get("type"), settings.BOT_LANGUAGE)
+                format_ledger_event(delta.get("type"), lang)
             )
             usdc = _safe_float(delta.get("usdc", "0"))
             ts = u.get("time", 0)
@@ -1119,15 +1228,33 @@ class BlockchainMonitor:
                 await record_events([(event_key, int(ts or 0))])
                 continue
 
-            time_str = format_timestamp(ts, settings.BOT_LANGUAGE)
+            time_str = format_timestamp(ts, lang)
+            address_display = self.format_address_display(user, lang)
+
+            if usdc > 0.000001:
+                amount_display = f"🟢 <code>+${usdc:,.4f}</code>"
+            elif usdc < -0.000001:
+                amount_display = f"🔴 <code>-${abs(usdc):,.4f}</code>"
+            else:
+                amount_display = "<code>$0.0000</code>"
+
+            hash_line = ""
+            if tx_hash:
+                if lang == "zh":
+                    hash_line = f"🔗 <b>交易哈希:</b> <code>{tx_hash}</code>\n"
+                else:
+                    hash_line = f"🔗 <b>Tx Hash:</b> <code>{tx_hash}</code>\n"
 
             msg = get_text(
-                settings.BOT_LANGUAGE,
+                lang,
                 "ledger_update_alert",
                 address=escape_html(user),
+                address_display=address_display,
                 event_type=event_type,
                 amount=f"{usdc:,.4f}",
+                amount_display=amount_display,
                 hash=tx_hash,
+                hash_line=hash_line,
                 time=time_str,
             )
             await self._record_notification(

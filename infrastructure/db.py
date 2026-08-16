@@ -192,6 +192,35 @@ async def get_addresses_with_notes() -> list[tuple[str, str | None]]:
         raise
 
 
+async def get_all_address_notes() -> dict[str, str | None]:
+    """Return a mapping of address -> note for all monitored addresses."""
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT address, note FROM monitored_addresses"
+        ) as cursor:
+            rows = await cursor.fetchall()
+            return {row[0].lower(): row[1] for row in rows}
+    except Exception:
+        logger.exception("Failed to fetch address notes.")
+        raise
+
+
+async def get_address_note(address: str) -> str | None:
+    """Get the note for a specific address."""
+    db = await get_db()
+    try:
+        async with db.execute(
+            "SELECT note FROM monitored_addresses WHERE address = ? COLLATE NOCASE",
+            (address.lower(),),
+        ) as cursor:
+            row = await cursor.fetchone()
+            return row[0] if row else None
+    except Exception:
+        logger.exception("Failed to fetch note for %s.", address)
+        raise
+
+
 async def get_all_address_settings() -> dict[str, dict]:
     """Return all monitored addresses with their settings."""
     db = await get_db()

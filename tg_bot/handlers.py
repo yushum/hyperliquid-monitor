@@ -28,10 +28,25 @@ from infrastructure.db import (
     update_note,
 )
 from infrastructure.hl_client import HyperliquidClient
-from tg_bot.formatting import escape_html, format_timestamp, split_message, unavailable
+from tg_bot.formatting import (
+    escape_html,
+    format_address_display,
+    format_crypto_amount,
+    format_pnl,
+    format_price,
+    format_timestamp,
+    format_usd,
+    split_message,
+    unavailable,
+)
 from tg_bot.locales import (
     format_boolean,
+    format_fill_badge,
+    format_fill_direction,
     format_order_side,
+    format_order_side_badge,
+    format_order_status,
+    format_order_status_badge,
     format_order_type,
     format_time_in_force,
     get_text,
@@ -381,15 +396,22 @@ async def cmd_add(message: Message) -> None:
                 added_count += 1
                 if _monitor:
                     try:
-                        await _monitor.subscribe(addr)
+                        await _monitor.subscribe(addr, note=note)
                     except Exception:
                         await remove_address(addr)
                         raise
                 logger.info("Added address: %s with note: %s", addr, note)
 
         if added_count == 1 and len(addresses) == 1:
+            addr_disp = format_address_display(addresses[0], notes[0], lang)
             await message.answer(
-                get_text(lang, "add_success", address=addresses[0]), parse_mode="HTML"
+                get_text(
+                    lang,
+                    "add_success",
+                    address=addresses[0],
+                    address_display=addr_disp,
+                ),
+                parse_mode="HTML",
             )
         elif added_count > 0:
             await message.answer(get_text(lang, "batch_add_success", count=added_count))
@@ -422,8 +444,15 @@ async def cmd_del(message: Message) -> None:
                 logger.info("Removed address: %s", addr)
 
         if removed_count == 1 and len(addresses) == 1:
+            addr_disp = format_address_display(addresses[0], None, lang)
             await message.answer(
-                get_text(lang, "del_success", address=addresses[0]), parse_mode="HTML"
+                get_text(
+                    lang,
+                    "del_success",
+                    address=addresses[0],
+                    address_display=addr_disp,
+                ),
+                parse_mode="HTML",
             )
         elif removed_count > 0:
             await message.answer(
@@ -626,9 +655,18 @@ async def process_userset_callback(callback_query: CallbackQuery) -> None:
         return
 
     address = ctx["address"]
+    note = ctx.get("note")
+    if note is None and _monitor:
+        note = _monitor.get_address_note(address)
+    address_display = format_address_display(address, note, lang)
     addr_settings = _monitor._monitored_addresses.get(address, {}) if _monitor else {}
 
-    msg = get_text(lang, "settings_user_title", address=address)
+    msg = get_text(
+        lang,
+        "settings_user_title",
+        address=address,
+        address_display=address_display,
+    )
     markup = _build_user_settings_keyboard(lang, cache_key, addr_settings)
     await callback_query.message.edit_text(msg, reply_markup=markup, parse_mode="HTML")
     await callback_query.answer()
@@ -692,11 +730,9 @@ async def process_info_callback(callback_query: CallbackQuery) -> None:
     )
     ctx = _context_cache.get(cache_key, {})
     note = ctx.get("note")
-    address_display = (
-        f"{escape_html(note)} (<code>{address}</code>)"
-        if note
-        else f"<code>{address}</code>"
-    )
+    if note is None and _monitor:
+        note = _monitor.get_address_note(address)
+    address_display = format_address_display(address, note, lang)
 
     hl = _get_hl_client()
 
@@ -730,9 +766,11 @@ async def process_info_callback(callback_query: CallbackQuery) -> None:
 
             position_value = _safe_float(pos.get("positionValue", "0"))
             roe = _safe_float(pos.get("returnOnEquity", "0"))
-            liquidation_px = _format_optional_number(
-                pos.get("liquidationPx"), lang, zero_is_missing=True
-            )
+            raw_liq = pos.get("liquidationPx")
+            if raw_liq is not None and str(raw_liq).strip() and _safe_float(raw_liq) > 0:
+                liquidation_px = format_price(raw_liq)
+            else:
+                liquidation_px = "无 (安全)" if lang == "zh" else "None (Safe)"
 
             leverage = pos.get("leverage", {})
             lev_val = leverage.get("value", 0)
@@ -743,8 +781,10 @@ async def process_info_callback(callback_query: CallbackQuery) -> None:
             cum_funding = pos.get("cumFunding", {})
             funding_all = _safe_float(cum_funding.get("allTime", "0"))
 
-            pos_dir = (
-                get_text(lang, "pos_long") if szi > 0 else get_text(lang, "pos_short")
+            pos_badge = (
+                "🟢 " + get_text(lang, "pos_long")
+                if szi > 0
+                else "🔴 " + get_text(lang, "pos_short")
             )
             lev_dir = (
                 get_text(lang, "lev_cross")
@@ -752,22 +792,29 @@ async def process_info_callback(callback_query: CallbackQuery) -> None:
                 else get_text(lang, "lev_isolated")
             )
 
+            upnl_display = format_pnl(unrealized_pnl, lang)
+            roe_display = f"{roe:+.2%}"
+            funding_all_display = format_usd(funding_all, show_sign=True)
+
             position_items.append(
                 get_text(
                     lang,
                     "position_detail",
                     coin=coin,
-                    pos_dir=pos_dir,
-                    szi=abs(szi),
+                    pos_badge=pos_badge,
+                    pos_dir=pos_badge,
+                    szi=format_crypto_amount(abs(szi)),
                     lev_val=lev_val,
                     lev_dir=lev_dir,
                     max_leverage=max_leverage,
-                    entry_px=f"{entry_px:,.4f}",
+                    entry_px=format_price(entry_px),
                     liquidation_px=liquidation_px,
-                    position_value=position_value,
+                    position_value=format_usd(position_value),
                     unrealized_pnl=unrealized_pnl,
+                    upnl_display=upnl_display,
                     roe=roe,
-                    funding_all=funding_all,
+                    roe_display=roe_display,
+                    funding_all=funding_all_display,
                 )
             )
 
@@ -777,13 +824,14 @@ async def process_info_callback(callback_query: CallbackQuery) -> None:
             lang,
             "info_result",
             address_display=address_display,
-            equity=f"{equity:,.2f}",
-            raw_usd=f"{raw_usd:,.2f}",
-            withdrawable=f"{withdrawable:,.2f}",
-            total_ntl=f"{total_ntl:,.2f}",
-            margin_used=f"{margin_used:,.2f}",
-            cross_maint=f"{cross_maint:,.2f}",
-            upnl=f"{total_upnl:,.2f}",
+            equity=format_usd(equity),
+            raw_usd=format_usd(raw_usd),
+            withdrawable=format_usd(withdrawable),
+            total_ntl=format_usd(total_ntl),
+            margin_used=format_usd(margin_used),
+            cross_maint=format_usd(cross_maint),
+            upnl=format_pnl(total_upnl, lang),
+            position_count=len(position_items),
             positions=positions_str,
         )
 
@@ -846,11 +894,9 @@ async def process_orders_callback(callback_query: CallbackQuery) -> None:
     )
     ctx = _context_cache.get(cache_key, {})
     note = ctx.get("note")
-    address_display = (
-        f"{escape_html(note)} (<code>{address}</code>)"
-        if note
-        else f"<code>{address}</code>"
-    )
+    if note is None and _monitor:
+        note = _monitor.get_address_note(address)
+    address_display = format_address_display(address, note, lang)
 
     hl = _get_hl_client()
 
@@ -864,10 +910,14 @@ async def process_orders_callback(callback_query: CallbackQuery) -> None:
         for o in orders:
             coin = escape_html(o.get("coin", ""))
             dir_str = escape_html(format_order_side(o.get("side"), lang))
+            dir_badge = format_order_side_badge(o.get("side"), lang)
 
             limit_px = _safe_float(o.get("limitPx", "0"))
             sz = _safe_float(o.get("sz", "0"))
-            orig_sz = _format_optional_number(o.get("origSz"), lang)
+            orig_sz_raw = o.get("origSz")
+            orig_sz_val = _safe_float(orig_sz_raw) if orig_sz_raw is not None else sz
+            orig_sz = format_crypto_amount(orig_sz_val)
+            notional = max(sz, orig_sz_val) * limit_px
             oid = o.get("oid", "")
             reduce_only = format_boolean(
                 o.get("reduceOnly"), lang, provided="reduceOnly" in o
@@ -900,9 +950,12 @@ async def process_orders_callback(callback_query: CallbackQuery) -> None:
                     "order_item",
                     coin=coin,
                     dir=dir_str,
+                    dir_badge=dir_badge,
+                    price=format_price(limit_px),
                     limit_px=f"{limit_px:,.4f}",
-                    sz=f"{sz:,.4f}",
+                    sz=format_crypto_amount(sz),
                     orig_sz=orig_sz,
+                    notional=format_usd(notional),
                     oid=oid,
                     reduce_only=reduce_only,
                     order_type=order_type,
@@ -917,7 +970,11 @@ async def process_orders_callback(callback_query: CallbackQuery) -> None:
         orders_str = "".join(order_items) or get_text(lang, "no_orders")
 
         text = get_text(
-            lang, "orders_result", address_display=address_display, orders=orders_str
+            lang,
+            "orders_result",
+            address_display=address_display,
+            order_count=len(orders),
+            orders=orders_str,
         )
 
         MAX_LEN = 4000
@@ -970,11 +1027,9 @@ async def process_stats_callback(callback_query: CallbackQuery) -> None:
     )
     ctx = _context_cache.get(cache_key, {})
     note = ctx.get("note")
-    address_display = (
-        f"{escape_html(note)} (<code>{address}</code>)"
-        if note
-        else f"<code>{address}</code>"
-    )
+    if note is None and _monitor:
+        note = _monitor.get_address_note(address)
+    address_display = format_address_display(address, note, lang)
 
     hl = _get_hl_client()
 
@@ -1029,11 +1084,13 @@ async def process_stats_callback(callback_query: CallbackQuery) -> None:
             else:
                 vol_str = f"${vol:,.2f}"
 
+            pnl_formatted = format_pnl(pnl, lang)
             stat_items.append(
                 get_text(
                     lang,
                     "stats_item",
                     period=period_label,
+                    pnl_formatted=pnl_formatted,
                     pnl=pnl_str,
                     roi=roi_str,
                     vol=vol_str,
@@ -1130,10 +1187,22 @@ async def process_setnote_callback(
         return
 
     address = ctx["address"]
+    note = ctx.get("note")
+    if note is None and _monitor:
+        note = _monitor.get_address_note(address)
+    address_display = format_address_display(address, note, lang)
+    current_note = note if note else ("无" if lang == "zh" else "None")
+
     await state.set_state(NoteState.waiting_for_note)
     await state.update_data(address=address, cache_key=cache_key)
 
-    msg = get_text(lang, "set_note_prompt", address=address)
+    msg = get_text(
+        lang,
+        "set_note_prompt",
+        address=address,
+        address_display=address_display,
+        current_note=current_note,
+    )
     await callback_query.message.answer(msg, parse_mode="HTML")
     await callback_query.answer()
 
@@ -1162,13 +1231,32 @@ async def process_note_input(message: Message, state: FSMContext) -> None:
     try:
         if text == "-":
             await update_note(address, None)
+            if _monitor:
+                _monitor.set_address_note(address, None)
+            addr_disp = format_address_display(address, None, lang)
             await message.answer(
-                get_text(lang, "set_note_cleared", address=address), parse_mode="HTML"
+                get_text(
+                    lang,
+                    "set_note_cleared",
+                    address=address,
+                    address_display=addr_disp,
+                ),
+                parse_mode="HTML",
             )
         else:
             await update_note(address, text)
+            if _monitor:
+                _monitor.set_address_note(address, text)
+            addr_disp = format_address_display(address, text, lang)
             await message.answer(
-                get_text(lang, "set_note_success", address=address), parse_mode="HTML"
+                get_text(
+                    lang,
+                    "set_note_success",
+                    address=address,
+                    address_display=addr_disp,
+                    note=escape_html(text),
+                ),
+                parse_mode="HTML",
             )
     except Exception:
         logger.exception("Failed to update note for %s.", address)
@@ -1200,6 +1288,12 @@ async def process_deladdr_callback(callback_query: CallbackQuery) -> None:
         return
 
     cache_key = callback_query.data.split(":", 1)[1]
+    ctx = _context_cache.get(cache_key, {})
+    note = ctx.get("note")
+    if note is None and _monitor:
+        note = _monitor.get_address_note(address)
+    address_display = format_address_display(address, note, lang)
+
     markup = InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -1218,7 +1312,12 @@ async def process_deladdr_callback(callback_query: CallbackQuery) -> None:
     )
     if callback_query.message:
         await callback_query.message.edit_text(
-            get_text(lang, "delete_confirm", address=address),
+            get_text(
+                lang,
+                "delete_confirm",
+                address=address,
+                address_display=address_display,
+            ),
             parse_mode="HTML",
             reply_markup=markup,
         )
@@ -1244,7 +1343,15 @@ async def process_confirmdel_callback(callback_query: CallbackQuery) -> None:
         if _monitor:
             await _monitor.unsubscribe(address)
 
-        await callback_query.answer(get_text(lang, "delete_success", address=address))
+        addr_disp = format_address_display(address, None, lang)
+        await callback_query.answer(
+            get_text(
+                lang,
+                "delete_success",
+                address=address,
+                address_display=addr_disp,
+            )
+        )
 
         cache_key = (
             callback_query.data.split(":", 1)[1] if ":" in callback_query.data else ""
