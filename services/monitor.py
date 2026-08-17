@@ -840,8 +840,6 @@ class BlockchainMonitor:
 
             coin = escape_html(order.get("coin") or unavailable(lang))
             raw_side = order.get("side")
-            dir_str = escape_html(format_order_side(raw_side, lang))
-            dir_badge = format_order_side_badge(raw_side, lang)
 
             raw_status = order_group.get("status", "unknown")
             status = escape_html(format_order_status(raw_status, lang))
@@ -880,14 +878,22 @@ class BlockchainMonitor:
                 for field in ("orderType", "tif", "reduceOnly", "origSz"):
                     if field not in order and field in details:
                         order[field] = details[field]
+                is_reduce_only = bool(order.get("reduceOnly"))
                 reduce_only = format_boolean(
                     order.get("reduceOnly"), lang, provided="reduceOnly" in order
                 )
                 orig_sz = _safe_float(order.get("origSz", orig_sz))
             else:
+                is_reduce_only = bool(order.get("reduceOnly"))
                 reduce_only = format_boolean(
                     order.get("reduceOnly"), lang, provided="reduceOnly" in order
                 )
+            dir_str = escape_html(
+                format_order_side(raw_side, lang, reduce_only=is_reduce_only)
+            )
+            dir_badge = format_order_side_badge(
+                raw_side, lang, reduce_only=is_reduce_only
+            )
             order_type_raw = order.get("orderType")
             order_type = escape_html(format_order_type(order_type_raw, lang))
             time_in_force = escape_html(
@@ -920,6 +926,7 @@ class BlockchainMonitor:
                 "dir_badge": dir_badge,
                 "status": status,
                 "status_badge": status_badge,
+                "raw_status": raw_status,
                 "limit_px": f"{limit_px:,.4f}",
                 "price": format_price(limit_px),
                 "sz": f"{sz:,.4f}",
@@ -990,9 +997,46 @@ class BlockchainMonitor:
         if not enabled:
             return
 
+        groups: dict[Any, list[dict[str, Any]]] = {}
+        for it in enabled:
+            oid = it.get("oid")
+            if oid:
+                key = (it["address_raw"].lower(), oid)
+            else:
+                key = (it["address_raw"].lower(), f"no_oid_{it['_event_key']}")
+            if key not in groups:
+                groups[key] = []
+            groups[key].append(it)
+
+        to_notify: list[dict[str, Any]] = []
+        superseded: list[dict[str, Any]] = []
+
+        for key, group_items in groups.items():
+            if len(group_items) > 1:
+                superseded.extend(group_items[:-1])
+            latest = group_items[-1]
+            raw_status = str(latest.get("raw_status", "")).strip().lower()
+            if raw_status == "filled" and self.is_notify_enabled(
+                latest["address_raw"], "fills"
+            ):
+                superseded.append(latest)
+            else:
+                to_notify.append(latest)
+
+        if superseded:
+            await record_events(
+                [(it["_event_key"], it["_event_time"]) for it in superseded]
+            )
+            for item in superseded:
+                self._pending_order_keys.discard(item["_event_key"])
+            await self._advance_order_cursors(superseded)
+
+        if not to_notify:
+            return
+
         lang = settings.BOT_LANGUAGE
-        if len(enabled) == 1:
-            it = enabled[0]
+        if len(to_notify) == 1:
+            it = to_notify[0]
             msg = get_text(lang, "order_update_alert", **it)
             await self._record_notification(
                 [(it["_event_key"], it["_event_time"])],
@@ -1008,7 +1052,7 @@ class BlockchainMonitor:
         chunks: list[list[dict[str, Any]]] = []
         current: list[dict[str, Any]] = []
         current_len = 0
-        for it in enabled:
+        for it in to_notify:
             line = get_text(lang, "order_update_item", **it) + "\n\n"
             if current and current_len + len(line) > 3500:
                 chunks.append(current)
@@ -1025,7 +1069,7 @@ class BlockchainMonitor:
             )
             if idx == 0:
                 msg = get_text(
-                    lang, "order_updates_batch_alert", count=len(enabled), items=body
+                    lang, "order_updates_batch_alert", count=len(to_notify), items=body
                 )
             else:
                 msg = body.rstrip("\n")

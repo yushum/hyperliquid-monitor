@@ -909,8 +909,13 @@ async def process_orders_callback(callback_query: CallbackQuery) -> None:
         order_items: list[str] = []
         for o in orders:
             coin = escape_html(o.get("coin", ""))
-            dir_str = escape_html(format_order_side(o.get("side"), lang))
-            dir_badge = format_order_side_badge(o.get("side"), lang)
+            is_reduce_only = bool(o.get("reduceOnly"))
+            dir_str = escape_html(
+                format_order_side(o.get("side"), lang, reduce_only=is_reduce_only)
+            )
+            dir_badge = format_order_side_badge(
+                o.get("side"), lang, reduce_only=is_reduce_only
+            )
 
             limit_px = _safe_float(o.get("limitPx", "0"))
             sz = _safe_float(o.get("sz", "0"))

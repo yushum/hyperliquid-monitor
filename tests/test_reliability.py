@@ -277,6 +277,176 @@ class ReliabilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(monitor._order_buffer[0]["oid"], 2)
         self.assertEqual(monitor._order_buffer[0]["address_raw"], address)
 
+    async def test_order_batch_folds_duplicate_oids_and_suppresses_redundant_fills(
+        self,
+    ) -> None:
+        address = "0x" + "a" * 40
+        monitor = BlockchainMonitor(StubNotifier())
+        monitor._monitored_addresses = {address: {}}
+        monitor._global_settings = {"notify_orders": True, "notify_fills": True}
+
+        item_open = {
+            "address": address,
+            "address_display": address,
+            "address_raw": address,
+            "coin": "BTC",
+            "dir": "Buy",
+            "dir_badge": "🟢 买入",
+            "status": "已挂单",
+            "status_badge": "🟡 挂单中",
+            "raw_status": "open",
+            "limit_px": "100",
+            "price": "$100.00",
+            "sz": "1.0",
+            "orig_sz": "1.0",
+            "notional": "$100.00",
+            "oid": 123,
+            "reduce_only": "否",
+            "order_type": "限价单",
+            "time_in_force": "GTC",
+            "time": "2026-08-17",
+            "_event_key": "k1",
+            "_event_time": 100,
+        }
+        item_filled = {
+            "address": address,
+            "address_display": address,
+            "address_raw": address,
+            "coin": "BTC",
+            "dir": "Buy",
+            "dir_badge": "🟢 买入",
+            "status": "已成交",
+            "status_badge": "🟢 全部成交",
+            "raw_status": "filled",
+            "limit_px": "100",
+            "price": "$100.00",
+            "sz": "0.0",
+            "orig_sz": "1.0",
+            "notional": "$100.00",
+            "oid": 123,
+            "reduce_only": "否",
+            "order_type": "限价单",
+            "time_in_force": "GTC",
+            "time": "2026-08-17",
+            "_event_key": "k2",
+            "_event_time": 101,
+        }
+
+        # Case 1: When notify_fills is True, redundant filled status update is suppressed
+        monitor._record_notification = AsyncMock()
+        with (
+            patch("services.monitor.record_events", AsyncMock()),
+            patch("services.monitor.update_last_order_time", AsyncMock()),
+        ):
+            await monitor._send_order_batch([item_open, item_filled])
+
+        monitor._record_notification.assert_not_awaited()
+
+        # Case 2: When notify_fills is False, filled status update is delivered
+        monitor._global_settings["notify_fills"] = False
+        with (
+            patch("services.monitor.record_events", AsyncMock(return_value=True)),
+            patch("services.monitor.update_last_order_time", AsyncMock()),
+        ):
+            await monitor._send_order_batch([item_open, item_filled])
+
+        monitor._record_notification.assert_awaited_once()
+        msg = monitor._record_notification.await_args.args[3]
+        self.assertIn("123", msg)
+        self.assertIn("全部成交", msg)
+
+
+    async def test_order_updates_direction_smart_open_close(self) -> None:
+        address = "0x" + "b" * 40
+        monitor = BlockchainMonitor(StubNotifier())
+        monitor._monitored_addresses = {address: {}}
+        monitor._global_settings = {"notify_orders": True}
+
+        # 1. Normal Buy -> 开多
+        # 2. Reduce Buy -> 平空
+        # 3. Normal Sell -> 开空
+        # 4. Reduce Sell -> 平多
+        orders_payload = [
+            {
+                "order": {
+                    "coin": "ETH",
+                    "side": "B",
+                    "limitPx": "3000.0",
+                    "sz": "1.0",
+                    "origSz": "1.0",
+                    "oid": 201,
+                    "reduceOnly": False,
+                    "orderType": "Limit",
+                    "timestamp": 1723880000000,
+                },
+                "status": "open",
+                "statusTimestamp": 1723880000000,
+            },
+            {
+                "order": {
+                    "coin": "ETH",
+                    "side": "B",
+                    "limitPx": "3000.0",
+                    "sz": "1.0",
+                    "origSz": "1.0",
+                    "oid": 202,
+                    "reduceOnly": True,
+                    "orderType": "Stop Market",
+                    "timestamp": 1723880000000,
+                },
+                "status": "open",
+                "statusTimestamp": 1723880000000,
+            },
+            {
+                "order": {
+                    "coin": "SOL",
+                    "side": "A",
+                    "limitPx": "150.0",
+                    "sz": "10.0",
+                    "origSz": "10.0",
+                    "oid": 203,
+                    "reduceOnly": False,
+                    "orderType": "Limit",
+                    "timestamp": 1723880000000,
+                },
+                "status": "open",
+                "statusTimestamp": 1723880000000,
+            },
+            {
+                "order": {
+                    "coin": "SOL",
+                    "side": "A",
+                    "limitPx": "150.0",
+                    "sz": "10.0",
+                    "origSz": "10.0",
+                    "oid": 204,
+                    "reduceOnly": True,
+                    "orderType": "Limit",
+                    "timestamp": 1723880000000,
+                },
+                "status": "open",
+                "statusTimestamp": 1723880000000,
+            },
+        ]
+
+        with patch("services.monitor.get_unprocessed_event_keys", AsyncMock(return_value=[
+            monitor._order_event_key(address, o) for o in orders_payload
+        ])):
+            await monitor._handle_order_updates({"data": orders_payload}, source_address=address, allow_historical=True)
+
+        self.assertEqual(len(monitor._order_buffer), 4)
+        self.assertEqual(monitor._order_buffer[0]["dir"], "开多")
+        self.assertEqual(monitor._order_buffer[0]["dir_badge"], "🟢 开多")
+
+        self.assertEqual(monitor._order_buffer[1]["dir"], "平空")
+        self.assertEqual(monitor._order_buffer[1]["dir_badge"], "🟢 平空")
+
+        self.assertEqual(monitor._order_buffer[2]["dir"], "开空")
+        self.assertEqual(monitor._order_buffer[2]["dir_badge"], "🔴 开空")
+
+        self.assertEqual(monitor._order_buffer[3]["dir"], "平多")
+        self.assertEqual(monitor._order_buffer[3]["dir_badge"], "🔴 平多")
+
 
 if __name__ == "__main__":
     unittest.main()

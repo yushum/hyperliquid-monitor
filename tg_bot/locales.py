@@ -54,23 +54,33 @@ MESSAGES: dict[str, dict[str, str]] = {
             "{extra_line}"
         ),
         "order_update_alert": (
-            "<b>{status_badge}</b> · <b>{coin}</b> {dir_badge}\n"
+            "<b>{status_badge}</b> · <b>{coin}</b>\n"
+            "🧭 <b>Side:</b> {dir_badge}\n"
             "👤 {address_display}\n\n"
             "🎯 <b>Limit Price:</b> <code>{price}</code>\n"
-            "📦 <b>Order Size:</b> <code>{orig_sz} {coin}</code> (<b>Remaining:</b> <code>{sz}</code>)\n"
+            "📦 <b>Order Size:</b> <code>{orig_sz} {coin}</code>\n"
+            "⏳ <b>Remaining:</b> <code>{sz} {coin}</code>\n"
             "💵 <b>Order Value:</b> <code>{notional}</code>\n"
-            "⚙️ <b>Type:</b> <code>{order_type}</code> | <b>TIF:</b> <code>{time_in_force}</code>\n"
+            "⚙️ <b>Type:</b> <code>{order_type}</code>\n"
+            "⏱️ <b>TIF:</b> <code>{time_in_force}</code>\n"
             "🛡️ <b>Reduce Only:</b> <code>{reduce_only}</code>\n"
             "🕒 <b>Time:</b> <code>{time}</code>\n"
             "🔗 <b>Order ID:</b> <code>#{oid}</code>"
         ),
         "order_updates_batch_alert": "📝 <b>Order Updates ({count})</b>\n\n{items}",
         "order_update_item": (
-            "• <b>{status_badge}</b> · <b>{coin}</b> {dir_badge}\n"
+            "• <b>{status_badge}</b> · <b>{coin}</b>\n"
+            "  🧭 <b>Side:</b> {dir_badge}\n"
             "  👤 {address_display}\n"
-            "  🎯 <b>Price:</b> <code>{price}</code> | 📦 <b>Size:</b> <code>{orig_sz}</code> (Rem: <code>{sz}</code>) | 💵 <b>Val:</b> <code>{notional}</code>\n"
-            "  ⚙️ <code>{order_type}</code> · <code>{time_in_force}</code> | 🛡️ <b>RO:</b> <code>{reduce_only}</code> | 🔗 <code>#{oid}</code>\n"
-            "  🕒 <code>{time}</code>"
+            "  🎯 <b>Price:</b> <code>{price}</code>\n"
+            "  📦 <b>Size:</b> <code>{orig_sz}</code>\n"
+            "  ⏳ <b>Remaining:</b> <code>{sz}</code>\n"
+            "  💵 <b>Value:</b> <code>{notional}</code>\n"
+            "  ⚙️ <b>Type:</b> <code>{order_type}</code>\n"
+            "  ⏱️ <b>TIF:</b> <code>{time_in_force}</code>\n"
+            "  🛡️ <b>Reduce Only:</b> <code>{reduce_only}</code>\n"
+            "  🕒 <b>Time:</b> <code>{time}</code>\n"
+            "  🔗 <b>Order ID:</b> <code>#{oid}</code>"
         ),
         "funding_alert": (
             "💸 <b>Funding Settlement</b> · <b>{coin}</b>\n"
@@ -116,9 +126,12 @@ MESSAGES: dict[str, dict[str, str]] = {
         "no_positions": "<i>No active positions.</i>",
         "position_detail": (
             "\n🔹 <b>{coin}</b> · {pos_badge} <b>{lev_val}x {lev_dir}</b>\n"
-            "  • <b>Size:</b> <code>{szi} {coin}</code> (<b>Notional:</b> <code>{position_value}</code>)\n"
-            "  • <b>Entry Price:</b> <code>{entry_px}</code> | <b>Liq Price:</b> <code>{liquidation_px}</code>\n"
-            "  • <b>Unrealized PnL:</b> {upnl_display} (<b>ROE:</b> <code>{roe_display}</code>)\n"
+            "  • <b>Size:</b> <code>{szi} {coin}</code>\n"
+            "  • <b>Notional:</b> <code>{position_value}</code>\n"
+            "  • <b>Entry Price:</b> <code>{entry_px}</code>\n"
+            "  • <b>Liq Price:</b> <code>{liquidation_px}</code>\n"
+            "  • <b>Unrealized PnL:</b> {upnl_display}\n"
+            "  • <b>ROE:</b> <code>{roe_display}</code>\n"
             "  • <b>Cum. Funding:</b> <code>{funding_all}</code>\n"
         ),
         "orders_result": (
@@ -128,10 +141,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         ),
         "no_orders": "<i>No active open orders.</i>",
         "order_item": (
-            "• <b>{coin}</b> {dir_badge} · <code>{order_type}</code>\n"
+            "• <b>{coin}</b> · <code>{order_type}</code>\n"
+            "  🧭 <b>Side:</b> {dir_badge}\n"
             "  🎯 <b>Price:</b> <code>{price}</code>\n"
-            "  📦 <b>Size:</b> <code>{orig_sz} {coin}</code> (<b>Rem:</b> <code>{sz}</code>) · <b>Value:</b> <code>{notional}</code>\n"
-            "  ⚙️ <b>TIF:</b> <code>{time_in_force}</code> | <b>Reduce Only:</b> <code>{reduce_only}</code>\n"
+            "  📦 <b>Size:</b> <code>{orig_sz} {coin}</code>\n"
+            "  ⏳ <b>Remaining:</b> <code>{sz} {coin}</code>\n"
+            "  💵 <b>Value:</b> <code>{notional}</code>\n"
+            "  ⚙️ <b>TIF:</b> <code>{time_in_force}</code>\n"
+            "  🛡️ <b>Reduce Only:</b> <code>{reduce_only}</code>\n"
             "  🔗 <b>Order ID:</b> <code>#{oid}</code>\n\n"
         ),
         "stats_result": (
@@ -141,7 +158,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         ),
         "stats_item": (
             "⏱ <b>[{period}]</b>\n"
-            "• <b>Realized PnL:</b> {pnl_formatted} (<b>ROI:</b> <code>{roi}</code>)\n"
+            "• <b>Realized PnL:</b> {pnl_formatted}\n"
+            "• <b>ROI:</b> <code>{roi}</code>\n"
             "• <b>Volume:</b> <code>{vol}</code>\n\n"
         ),
         "set_note_prompt": (
@@ -239,23 +257,33 @@ MESSAGES: dict[str, dict[str, str]] = {
             "{extra_line}"
         ),
         "order_update_alert": (
-            "<b>{status_badge}</b> · <b>{coin}</b> {dir_badge}\n"
+            "<b>{status_badge}</b> · <b>{coin}</b>\n"
+            "🧭 <b>委托方向:</b> {dir_badge}\n"
             "👤 {address_display}\n\n"
             "🎯 <b>委托价格:</b> <code>{price}</code>\n"
-            "📦 <b>委托数量:</b> <code>{orig_sz} {coin}</code> (<b>剩余:</b> <code>{sz}</code>)\n"
+            "📦 <b>委托数量:</b> <code>{orig_sz} {coin}</code>\n"
+            "⏳ <b>剩余数量:</b> <code>{sz} {coin}</code>\n"
             "💵 <b>委托总额:</b> <code>{notional}</code>\n"
-            "⚙️ <b>订单类型:</b> <code>{order_type}</code> | <b>有效方式:</b> <code>{time_in_force}</code>\n"
+            "⚙️ <b>订单类型:</b> <code>{order_type}</code>\n"
+            "⏱️ <b>有效方式:</b> <code>{time_in_force}</code>\n"
             "🛡️ <b>只减仓:</b> <code>{reduce_only}</code>\n"
             "🕒 <b>更新时间:</b> <code>{time}</code>\n"
             "🔗 <b>订单 ID:</b> <code>#{oid}</code>"
         ),
         "order_updates_batch_alert": "📝 <b>订单状态更新 ({count} 笔)</b>\n\n{items}",
         "order_update_item": (
-            "• <b>{status_badge}</b> · <b>{coin}</b> {dir_badge}\n"
+            "• <b>{status_badge}</b> · <b>{coin}</b>\n"
+            "  🧭 <b>委托方向:</b> {dir_badge}\n"
             "  👤 {address_display}\n"
-            "  🎯 <b>价格:</b> <code>{price}</code> | 📦 <b>数量:</b> <code>{orig_sz}</code> (余: <code>{sz}</code>) | 💵 <b>总额:</b> <code>{notional}</code>\n"
-            "  ⚙️ <code>{order_type}</code> · <code>{time_in_force}</code> | 🛡️ <b>只减仓:</b> <code>{reduce_only}</code> | 🔗 <code>#{oid}</code>\n"
-            "  🕒 <code>{time}</code>"
+            "  🎯 <b>委托价格:</b> <code>{price}</code>\n"
+            "  📦 <b>委托数量:</b> <code>{orig_sz}</code>\n"
+            "  ⏳ <b>剩余数量:</b> <code>{sz}</code>\n"
+            "  💵 <b>委托总额:</b> <code>{notional}</code>\n"
+            "  ⚙️ <b>订单类型:</b> <code>{order_type}</code>\n"
+            "  ⏱️ <b>有效方式:</b> <code>{time_in_force}</code>\n"
+            "  🛡️ <b>只减仓:</b> <code>{reduce_only}</code>\n"
+            "  🕒 <b>更新时间:</b> <code>{time}</code>\n"
+            "  🔗 <b>订单 ID:</b> <code>#{oid}</code>"
         ),
         "funding_alert": (
             "💸 <b>资金费结算</b> · <b>{coin}</b>\n"
@@ -294,17 +322,20 @@ MESSAGES: dict[str, dict[str, str]] = {
             "• <b>原始 USD 余额:</b> <code>{raw_usd}</code>\n\n"
             "📋 <b>当前活跃持仓 ({position_count}):</b>\n{positions}"
         ),
-        "pos_long": "多头 (Long)",
-        "pos_short": "空头 (Short)",
-        "lev_cross": "全仓 (Cross)",
-        "lev_isolated": "逐仓 (Isolated)",
+        "pos_long": "多头",
+        "pos_short": "空头",
+        "lev_cross": "全仓",
+        "lev_isolated": "逐仓",
         "no_positions": "<i>当前无活跃持仓。</i>",
         "position_detail": (
             "\n🔹 <b>{coin}</b> · {pos_badge} <b>{lev_val}x {lev_dir}</b>\n"
-            "  • <b>持仓数量:</b> <code>{szi} {coin}</code> (<b>名义价值:</b> <code>{position_value}</code>)\n"
-            "  • <b>开仓均价:</b> <code>{entry_px}</code> | <b>预估强平:</b> <code>{liquidation_px}</code>\n"
-            "  • <b>未实现盈亏:</b> {upnl_display} (<b>ROE:</b> <code>{roe_display}</code>)\n"
-            "  • <b>累计已结资金费:</b> <code>{funding_all}</code>\n"
+            "  • <b>持仓数量:</b> <code>{szi} {coin}</code>\n"
+            "  • <b>名义价值:</b> <code>{position_value}</code>\n"
+            "  • <b>开仓均价:</b> <code>{entry_px}</code>\n"
+            "  • <b>预估强平:</b> <code>{liquidation_px}</code>\n"
+            "  • <b>未实现盈亏:</b> {upnl_display}\n"
+            "  • <b>回报率 (ROE):</b> <code>{roe_display}</code>\n"
+            "  • <b>累计资金费:</b> <code>{funding_all}</code>\n"
         ),
         "orders_result": (
             "📋 <b>当前挂单列表</b> ({order_count})\n"
@@ -313,10 +344,14 @@ MESSAGES: dict[str, dict[str, str]] = {
         ),
         "no_orders": "<i>当前无活跃挂单。</i>",
         "order_item": (
-            "• <b>{coin}</b> {dir_badge} · <code>{order_type}</code>\n"
-            "  🎯 <b>价格:</b> <code>{price}</code>\n"
-            "  📦 <b>数量:</b> <code>{orig_sz} {coin}</code> (<b>剩余:</b> <code>{sz}</code>) · <b>总额:</b> <code>{notional}</code>\n"
-            "  ⚙️ <b>有效方式:</b> <code>{time_in_force}</code> | <b>只减仓:</b> <code>{reduce_only}</code>\n"
+            "• <b>{coin}</b> · <code>{order_type}</code>\n"
+            "  🧭 <b>委托方向:</b> {dir_badge}\n"
+            "  🎯 <b>委托价格:</b> <code>{price}</code>\n"
+            "  📦 <b>委托数量:</b> <code>{orig_sz} {coin}</code>\n"
+            "  ⏳ <b>剩余数量:</b> <code>{sz} {coin}</code>\n"
+            "  💵 <b>委托总额:</b> <code>{notional}</code>\n"
+            "  ⚙️ <b>有效方式:</b> <code>{time_in_force}</code>\n"
+            "  🛡️ <b>只减仓:</b> <code>{reduce_only}</code>\n"
             "  🔗 <b>订单 ID:</b> <code>#{oid}</code>\n\n"
         ),
         "stats_result": (
@@ -326,7 +361,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         ),
         "stats_item": (
             "⏱ <b>【{period}】</b>\n"
-            "• <b>累计收益 (PnL):</b> {pnl_formatted} (<b>ROI:</b> <code>{roi}</code>)\n"
+            "• <b>累计收益 (PnL):</b> {pnl_formatted}\n"
+            "• <b>收益率 (ROI):</b> <code>{roi}</code>\n"
             "• <b>交易体量 (Vol):</b> <code>{vol}</code>\n\n"
         ),
         "set_note_prompt": (
@@ -379,27 +415,27 @@ MESSAGES: dict[str, dict[str, str]] = {
 }
 
 ORDER_STATUS_LABELS_ZH: dict[str, str] = {
-    "open": "已挂单 (open)",
-    "filled": "已成交 (filled)",
-    "canceled": "已撤销 (canceled)",
-    "cancelled": "已撤销 (cancelled)",
-    "triggered": "已触发 (triggered)",
-    "rejected": "已拒绝 (rejected)",
-    "margincanceled": "保证金不足撤单 (marginCanceled)",
-    "vaultwithdrawalcanceled": "金库提款撤单 (vaultWithdrawalCanceled)",
-    "openinterestcapcanceled": "达持仓上限撤单 (openInterestCapCanceled)",
-    "selftradecanceled": "防自成交撤单 (selfTradeCanceled)",
-    "reduceonlycanceled": "无法减仓撤单 (reduceOnlyCanceled)",
-    "siblingfilledcanceled": "关联订单成交撤单 (siblingFilledCanceled)",
-    "delistedcanceled": "资产下架撤单 (delistedCanceled)",
-    "liquidatedcanceled": "强平撤单 (liquidatedCanceled)",
-    "scheduledcancel": "定时撤单触发 (scheduledCancel)",
-    "tickrejected": "价格精度不符拒绝 (tickRejected)",
-    "mintradentlrejected": "低于最小金额拒绝 (minTradeNtlRejected)",
-    "perpmarginrejected": "保证金不足拒绝 (perpMarginRejected)",
-    "reduceonlyrejected": "只减仓不成立拒绝 (reduceOnlyRejected)",
-    "badalopxrejected": "ALO挂单即成交拒绝 (badAloPxRejected)",
-    "perpmaxpositionrejected": "超持仓上限拒绝 (perpMaxPositionRejected)",
+    "open": "挂单中",
+    "filled": "全部成交",
+    "canceled": "已撤销",
+    "cancelled": "已撤销",
+    "triggered": "已触发",
+    "rejected": "已拒绝",
+    "margincanceled": "保证金不足撤单",
+    "vaultwithdrawalcanceled": "金库提款撤单",
+    "openinterestcapcanceled": "达持仓上限撤单",
+    "selftradecanceled": "防自成交撤单",
+    "reduceonlycanceled": "无法减仓撤单",
+    "siblingfilledcanceled": "关联订单成交撤单",
+    "delistedcanceled": "资产下架撤单",
+    "liquidatedcanceled": "强平撤单",
+    "scheduledcancel": "定时撤单",
+    "tickrejected": "价格精度不符拒绝",
+    "mintradentlrejected": "低于最小金额拒绝",
+    "perpmarginrejected": "保证金不足拒绝",
+    "reduceonlyrejected": "只减仓不成立拒绝",
+    "badalopxrejected": "ALO挂单即成交拒绝",
+    "perpmaxpositionrejected": "超持仓上限拒绝",
     "unknown": "未知状态",
 }
 
@@ -502,20 +538,33 @@ def format_fill_badge(value: Any, lang_code: str = "zh") -> str:
         return badges.get(key, f"⚡ {value}")
 
 
-def format_order_side_badge(value: Any, lang_code: str = "zh") -> str:
-    """Format order side (B/A) with colored emoji badge."""
+def format_order_side_badge(
+    value: Any,
+    lang_code: str = "zh",
+    *,
+    reduce_only: bool = False,
+) -> str:
+    """Format order side with colored emoji badge (e.g. 🟢 开多 / 🔴 开空 / 🟢 平空 / 🔴 平多)."""
     key = str(value).strip().upper() if value is not None else ""
     if _lang_code(lang_code) == "zh":
-        if key in ("B", "BUY"):
-            return "🟢 买入 / 做多"
-        if key in ("A", "SELL"):
-            return "🔴 卖出 / 做空"
+        if key in ("B", "BUY", "OPEN LONG", "OPEN_LONG"):
+            return "🟢 平空" if reduce_only else "🟢 开多"
+        if key in ("A", "SELL", "OPEN SHORT", "OPEN_SHORT"):
+            return "🔴 平多" if reduce_only else "🔴 开空"
+        if key in ("CLOSE LONG", "CLOSE_LONG"):
+            return "🔴 平多"
+        if key in ("CLOSE SHORT", "CLOSE_SHORT"):
+            return "🟢 平空"
         return "⚡ 未知方向"
     else:
-        if key in ("B", "BUY"):
-            return "🟢 Buy / Long"
-        if key in ("A", "SELL"):
-            return "🔴 Sell / Short"
+        if key in ("B", "BUY", "OPEN LONG", "OPEN_LONG"):
+            return "🟢 Close Short" if reduce_only else "🟢 Open Long"
+        if key in ("A", "SELL", "OPEN SHORT", "OPEN_SHORT"):
+            return "🔴 Close Long" if reduce_only else "🔴 Open Short"
+        if key in ("CLOSE LONG", "CLOSE_LONG"):
+            return "🔴 Close Long"
+        if key in ("CLOSE SHORT", "CLOSE_SHORT"):
+            return "🟢 Close Short"
         return "⚡ Unknown"
 
 
@@ -524,13 +573,27 @@ def format_order_status_badge(status: Any, lang_code: str = "zh") -> str:
     key = str(status).strip().lower() if status else "unknown"
     if _lang_code(lang_code) == "zh":
         badges = {
-            "open": "🟡 挂单中 (Open)",
-            "filled": "🟢 全部成交 (Filled)",
-            "canceled": "⚪ 已撤销 (Canceled)",
-            "cancelled": "⚪ 已撤销 (Canceled)",
-            "triggered": "🟣 已触发 (Triggered)",
-            "rejected": "🔴 已拒绝 (Rejected)",
-            "margincanceled": "🔴 保证金不足自动撤销 (Margin Canceled)",
+            "open": "🟡 挂单中",
+            "filled": "🟢 全部成交",
+            "canceled": "⚪ 已撤销",
+            "cancelled": "⚪ 已撤销",
+            "triggered": "🟣 已触发",
+            "rejected": "🔴 已拒绝",
+            "margincanceled": "🔴 保证金不足撤单",
+            "perpmarginrejected": "🔴 保证金不足拒绝",
+            "vaultwithdrawalcanceled": "⚪ 金库提款撤单",
+            "openinterestcapcanceled": "⚪ 达持仓上限撤单",
+            "selftradecanceled": "⚪ 防自成交撤单",
+            "reduceonlycanceled": "⚪ 无法减仓撤单",
+            "siblingfilledcanceled": "⚪ 关联订单成交撤单",
+            "delistedcanceled": "⚪ 资产下架撤单",
+            "liquidatedcanceled": "🔴 强平撤单",
+            "scheduledcancel": "⚪ 定时撤单",
+            "tickrejected": "🔴 价格精度不符拒绝",
+            "mintradentlrejected": "🔴 低于最小金额拒绝",
+            "reduceonlyrejected": "🔴 只减仓不成立拒绝",
+            "badalopxrejected": "🔴 ALO挂单即成交拒绝",
+            "perpmaxpositionrejected": "🔴 超持仓上限拒绝",
         }
         return badges.get(key, f"⚡ {format_order_status(status, lang_code)}")
     else:
@@ -542,6 +605,20 @@ def format_order_status_badge(status: Any, lang_code: str = "zh") -> str:
             "triggered": "🟣 Triggered",
             "rejected": "🔴 Rejected",
             "margincanceled": "🔴 Margin Canceled",
+            "perpmarginrejected": "🔴 Margin Rejected",
+            "vaultwithdrawalcanceled": "⚪ Vault Withdrawal Canceled",
+            "openinterestcapcanceled": "⚪ OI Cap Canceled",
+            "selftradecanceled": "⚪ Self Trade Canceled",
+            "reduceonlycanceled": "⚪ Reduce Only Canceled",
+            "siblingfilledcanceled": "⚪ Sibling Filled Canceled",
+            "delistedcanceled": "⚪ Delisted Canceled",
+            "liquidatedcanceled": "🔴 Liquidated Canceled",
+            "scheduledcancel": "⚪ Scheduled Cancel",
+            "tickrejected": "🔴 Tick Rejected",
+            "mintradentlrejected": "🔴 Min Trade Value Rejected",
+            "reduceonlyrejected": "🔴 Reduce Only Rejected",
+            "badalopxrejected": "🔴 Post-Only Cross Rejected",
+            "perpmaxpositionrejected": "🔴 Max Position Rejected",
         }
         return badges.get(key, f"⚡ {status if status else 'Unknown'}")
 
@@ -598,13 +675,34 @@ def format_boolean(value: Any, lang_code: str = "zh", *, provided: bool = True) 
     return "Yes" if bool(value) else "No"
 
 
-def format_order_side(value: Any, lang_code: str = "zh") -> str:
+def format_order_side(
+    value: Any,
+    lang_code: str = "zh",
+    *,
+    reduce_only: bool = False,
+) -> str:
+    """Human-readable order side in the target language (e.g. 开多 / 开空 / 平空 / 平多)."""
     key = str(value).strip().upper() if value is not None else ""
-    if key in ("B", "BUY"):
-        return "买入 / 做多" if _lang_code(lang_code) == "zh" else "Buy"
-    if key in ("A", "SELL"):
-        return "卖出 / 做空" if _lang_code(lang_code) == "zh" else "Sell"
-    return "未知方向" if _lang_code(lang_code) == "zh" else "Unknown side"
+    if _lang_code(lang_code) == "zh":
+        if key in ("B", "BUY", "OPEN LONG", "OPEN_LONG"):
+            return "平空" if reduce_only else "开多"
+        if key in ("A", "SELL", "OPEN SHORT", "OPEN_SHORT"):
+            return "平多" if reduce_only else "开空"
+        if key in ("CLOSE LONG", "CLOSE_LONG"):
+            return "平多"
+        if key in ("CLOSE SHORT", "CLOSE_SHORT"):
+            return "平空"
+        return "未知方向"
+    else:
+        if key in ("B", "BUY", "OPEN LONG", "OPEN_LONG"):
+            return "Close Short" if reduce_only else "Open Long"
+        if key in ("A", "SELL", "OPEN SHORT", "OPEN_SHORT"):
+            return "Close Long" if reduce_only else "Open Short"
+        if key in ("CLOSE LONG", "CLOSE_LONG"):
+            return "Close Long"
+        if key in ("CLOSE SHORT", "CLOSE_SHORT"):
+            return "Close Short"
+        return "Unknown"
 
 
 def format_fill_direction(value: Any, lang_code: str = "zh") -> str:

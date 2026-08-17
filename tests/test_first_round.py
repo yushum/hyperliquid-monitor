@@ -125,8 +125,14 @@ class FormattingTests(unittest.TestCase):
         self.assertEqual(format_fill_badge("Close Short", "zh"), "🟢 平空")
         self.assertEqual(format_fill_badge("Open Short", "zh"), "🔴 开空")
         self.assertEqual(format_fill_badge("Close Long", "zh"), "🔴 平多")
-        self.assertEqual(format_order_side_badge("B", "zh"), "🟢 买入 / 做多")
-        self.assertEqual(format_order_side_badge("A", "zh"), "🔴 卖出 / 做空")
+        self.assertEqual(format_order_side_badge("B", "zh"), "🟢 开多")
+        self.assertEqual(format_order_side_badge("B", "zh", reduce_only=True), "🟢 平空")
+        self.assertEqual(format_order_side_badge("A", "zh"), "🔴 开空")
+        self.assertEqual(format_order_side_badge("A", "zh", reduce_only=True), "🔴 平多")
+        self.assertEqual(format_order_side("B", "zh"), "开多")
+        self.assertEqual(format_order_side("B", "zh", reduce_only=True), "平空")
+        self.assertEqual(format_order_side("A", "zh"), "开空")
+        self.assertEqual(format_order_side("A", "zh", reduce_only=True), "平多")
         self.assertIn("全部成交", format_order_status_badge("filled", "zh"))
 
     def test_alert_templates_first_line_intuitiveness(self) -> None:
@@ -158,7 +164,8 @@ class FormattingTests(unittest.TestCase):
             "order_update_alert",
             status_badge="🟢 全部成交 (Filled)",
             coin="ETH",
-            dir_badge="🟢 买入 / 做多",
+            dir="买入",
+            dir_badge="🟢 买入",
             address_display="<b>Whale</b> (<code>0x123...</code>)",
             price="$3,000.00",
             orig_sz="10",
@@ -173,6 +180,73 @@ class FormattingTests(unittest.TestCase):
         first_line_order = order_msg.splitlines()[0]
         self.assertIn("全部成交", first_line_order)
         self.assertIn("ETH", first_line_order)
+
+    def test_single_info_per_line_formatting(self) -> None:
+        order_alert = get_text(
+            "zh",
+            "order_update_alert",
+            status_badge="🟡 挂单中",
+            coin="BTC",
+            dir="开多",
+            dir_badge="🟢 开多",
+            address_display="<code>0x123...</code>",
+            price="0,000.00",
+            orig_sz="1.5000",
+            sz="1.5000",
+            notional="0,000.00",
+            order_type="限价单",
+            time_in_force="一直有效 (GTC)",
+            reduce_only="否",
+            time="2026-08-17 14:00:00 CST",
+            oid=999,
+        )
+        alert_lines = order_alert.splitlines()
+        self.assertIn("🟡 挂单中", alert_lines[0])
+        self.assertIn("BTC", alert_lines[0])
+        self.assertIn("委托方向:</b> 🟢 开多", alert_lines[1])
+        self.assertNotIn(" | ", order_alert)
+
+        order_item = get_text(
+            "zh",
+            "order_update_item",
+            status_badge="🟡 挂单中",
+            coin="BTC",
+            dir="开多",
+            dir_badge="🟢 开多",
+            address_display="<code>0x123...</code>",
+            price="0,000.00",
+            orig_sz="1.5000",
+            sz="1.5000",
+            notional="0,000.00",
+            order_type="限价单",
+            time_in_force="一直有效 (GTC)",
+            reduce_only="否",
+            time="2026-08-17 14:00:00 CST",
+            oid=999,
+        )
+        self.assertNotIn(" | ", order_item)
+        self.assertIn("委托方向:", order_item)
+        self.assertIn("委托价格:", order_item)
+        self.assertIn("剩余数量:", order_item)
+
+        pos_detail = get_text(
+            "zh",
+            "position_detail",
+            coin="BTC",
+            pos_badge="🟢 多头",
+            lev_val="10",
+            lev_dir="全仓",
+            szi="1.5",
+            position_value="$90,000.00",
+            entry_px="$60,000.00",
+            liquidation_px="$50,000.00",
+            upnl_display="+$1,000.00",
+            roe_display="+10.00%",
+            funding_all="-$5.00",
+        )
+        self.assertNotIn(" | ", pos_detail)
+        self.assertIn("名义价值:", pos_detail)
+        self.assertIn("回报率 (ROE):", pos_detail)
 
 
 
