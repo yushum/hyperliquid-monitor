@@ -2,9 +2,15 @@ FROM python:3.14-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app
+    PYTHONPATH=/app \
+    LD_PRELOAD=/usr/local/lib/libjemalloc.so.2
 
 WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libjemalloc2 \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s $(find /usr/lib -name 'libjemalloc.so.2' | head -n 1) /usr/local/lib/libjemalloc.so.2
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
