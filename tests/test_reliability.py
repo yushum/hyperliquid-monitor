@@ -96,6 +96,37 @@ class ReliabilityTests(unittest.IsolatedAsyncioTestCase):
         monitor._handle_aggregated_fills.assert_awaited_once()
         self.assertNotIn(key, monitor._fill_buffer)
 
+    async def test_order_buffer_waits_for_quiet_period_but_honors_max_wait(
+        self,
+    ) -> None:
+        monitor = BlockchainMonitor(StubNotifier())
+        item = {
+            "_event_key": "order:1",
+            "_event_time": 100,
+            "address_raw": "0x" + "1" * 40,
+        }
+        monitor._order_buffer.append(item)
+        now = time.monotonic()
+        monitor._order_buffer_started_at = now
+        monitor._order_buffer_updated_at = now
+        monitor._send_order_batch = AsyncMock()
+
+        await monitor._flush_order_buffer()
+        monitor._send_order_batch.assert_not_awaited()
+        self.assertEqual(monitor._order_buffer, [item])
+
+        monitor._order_buffer_started_at = (
+            time.monotonic() - settings.ORDER_MAX_WAIT_SECONDS - 1
+        )
+        with patch(
+            "services.monitor.get_unprocessed_event_keys",
+            AsyncMock(return_value={"order:1"}),
+        ):
+            await monitor._flush_order_buffer()
+
+        monitor._send_order_batch.assert_awaited_once_with([item])
+        self.assertEqual(monitor._order_buffer, [])
+
     async def test_account_event_recovery_uses_persisted_cursors(self) -> None:
         address = "0x" + "9" * 40
         funding = {"time": 201, "coin": "BTC", "usdc": "1"}
@@ -462,6 +493,62 @@ class ReliabilityTests(unittest.IsolatedAsyncioTestCase):
         msg = monitor._record_notification.await_args.args[3]
         self.assertIn("123", msg)
         self.assertIn("全部成交", msg)
+
+    async def test_large_order_burst_becomes_one_readable_summary(self) -> None:
+        address = "0x" + "c" * 40
+        monitor = BlockchainMonitor(StubNotifier())
+        monitor._record_notification = AsyncMock()
+        items = []
+        for index in range(200):
+            is_cancel = index >= 100
+            items.append(
+                {
+                    "address": address,
+                    "address_display": f"<code>{address}</code>",
+                    "address_raw": address,
+                    "coin": "BTC",
+                    "dir": "开空",
+                    "dir_badge": "🔴 开空",
+                    "status": "已撤销" if is_cancel else "挂单中",
+                    "status_badge": "⚪ 已撤销" if is_cancel else "🟡 挂单中",
+                    "raw_status": "canceled" if is_cancel else "open",
+                    "limit_px": f"{100 + index}",
+                    "price": f"${100 + index}.00",
+                    "sz": "1.0000",
+                    "orig_sz": "1.0000",
+                    "notional": f"${100 + index}.00",
+                    "oid": index + 1,
+                    "reduce_only": "否",
+                    "order_type": "限价单",
+                    "time_in_force": "GTC",
+                    "time": (
+                        f"2026-08-21 18:{index // 60:02d}:{index % 60:02d} "
+                        "UTC+08:00"
+                    ),
+                    "_event_key": f"order:{index}",
+                    "_event_time": 100 + index,
+                }
+            )
+
+        with patch("services.monitor.update_last_order_time", AsyncMock()):
+            await monitor._send_order_notifications(items, "zh")
+
+        monitor._record_notification.assert_awaited_once()
+        args = monitor._record_notification.await_args.args
+        self.assertEqual(len(args[0]), len(items))
+        self.assertEqual(args[1], address)
+        message = args[3]
+        self.assertIn(f"订单批量变动汇总 ({len(items)} 笔)", message)
+        self.assertIn(address, message)
+        self.assertIn("🟡 挂单中", message)
+        self.assertIn("⚪ 已撤销", message)
+        self.assertEqual(message.count("100 笔"), 2)
+        self.assertEqual(message.count("100 BTC"), 2)
+        self.assertIn("$14,950.00", message)
+        self.assertIn("$24,950.00", message)
+        self.assertIn("$100.00 – $199.00", message)
+        self.assertIn("$200.00 – $299.00", message)
+        self.assertNotIn("订单 ID", message)
 
 
     async def test_order_updates_direction_smart_open_close(self) -> None:

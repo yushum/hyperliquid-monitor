@@ -24,7 +24,12 @@ class Settings(BaseSettings):
     FILL_BUFFER_SECONDS: float = 3.0
     # Emit an active order eventually even if fills keep arriving continuously.
     FILL_MAX_WAIT_SECONDS: float = 15.0
-    ORDER_BUFFER_SECONDS: float = 2.0
+    # Wait for a quiet period so algorithmic order bursts become one update.
+    ORDER_BUFFER_SECONDS: float = 5.0
+    # Bound notification latency for a continuous stream of order updates.
+    ORDER_MAX_WAIT_SECONDS: float = 30.0
+    # Above this size, send an aggregate instead of one verbose block per order.
+    ORDER_BURST_SUMMARY_THRESHOLD: int = 5
     OUTBOX_POLL_SECONDS: float = 1.0
     OUTBOX_RETRY_MAX_SECONDS: float = 300.0
     MAX_WS_USERS: int = 10
@@ -45,6 +50,7 @@ class Settings(BaseSettings):
         "FILL_BUFFER_SECONDS",
         "FILL_MAX_WAIT_SECONDS",
         "ORDER_BUFFER_SECONDS",
+        "ORDER_MAX_WAIT_SECONDS",
         "OUTBOX_POLL_SECONDS",
         "OUTBOX_RETRY_MAX_SECONDS",
     )
@@ -52,6 +58,13 @@ class Settings(BaseSettings):
     def _positive_buffer_window(cls, v: float) -> float:
         if v <= 0:
             raise ValueError("buffer window must be greater than zero")
+        return v
+
+    @field_validator("ORDER_BURST_SUMMARY_THRESHOLD")
+    @classmethod
+    def _valid_order_summary_threshold(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError("order burst summary threshold must be at least one")
         return v
 
     @field_validator("MAX_WS_USERS")

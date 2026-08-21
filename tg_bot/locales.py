@@ -68,6 +68,18 @@ MESSAGES: dict[str, dict[str, str]] = {
             "🔗 <b>Order ID:</b> <code>#{oid}</code>"
         ),
         "order_updates_batch_alert": "📝 <b>Order Updates ({count})</b>\n\n{items}",
+        "order_burst_alert": (
+            "⚡ <b>Order Burst Summary ({count} updates)</b>\n"
+            "👤 <b>Address:</b> {address_display}\n\n"
+            "{groups}\n\n"
+            "🕒 <b>Time Range:</b> <code>{start_time}</code> – <code>{end_time}</code>\n"
+            "ℹ️ High-frequency updates were combined to prevent notification flooding."
+        ),
+        "order_burst_group": (
+            "• {status_badge} · <b>{coin}</b> · {dir_badge}: <b>{count} orders</b>\n"
+            "  📦 <code>{size} {coin}</code> · 💵 <code>{notional}</code> · "
+            "🎯 <code>{price_range}</code>"
+        ),
         "order_update_item": (
             "• <b>{status_badge}</b> · <b>{coin}</b>\n"
             "  🧭 <b>Direction:</b> {dir_badge}\n"
@@ -267,6 +279,18 @@ MESSAGES: dict[str, dict[str, str]] = {
             "🔗 <b>订单 ID:</b> <code>#{oid}</code>"
         ),
         "order_updates_batch_alert": "📝 <b>订单状态更新 ({count} 笔)</b>\n\n{items}",
+        "order_burst_alert": (
+            "⚡ <b>订单批量变动汇总 ({count} 笔)</b>\n"
+            "👤 <b>监控地址:</b> {address_display}\n\n"
+            "{groups}\n\n"
+            "🕒 <b>时间范围:</b> <code>{start_time}</code> ～ <code>{end_time}</code>\n"
+            "ℹ️ 高频订单已自动合并，避免逐笔刷屏。"
+        ),
+        "order_burst_group": (
+            "• {status_badge} · <b>{coin}</b> · {dir_badge}: <b>{count} 笔</b>\n"
+            "  📦 <code>{size} {coin}</code> · 💵 <code>{notional}</code> · "
+            "🎯 <code>{price_range}</code>"
+        ),
         "order_update_item": (
             "• <b>{status_badge}</b> · <b>{coin}</b>\n"
             "  🧭 <b>委托方向:</b> {dir_badge}\n"

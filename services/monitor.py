@@ -106,6 +106,8 @@ class BlockchainMonitor:
 
         # Buffer for aggregating order updates arriving within a short window
         self._order_buffer: list[dict[str, Any]] = []
+        self._order_buffer_started_at: float | None = None
+        self._order_buffer_updated_at: float | None = None
         self._order_buffer_lock = asyncio.Lock()
         self._pending_order_keys: set[str] = set()
 
@@ -317,7 +319,7 @@ class BlockchainMonitor:
                 pass
 
         await self._flush_fill_buffer(force=True)
-        await self._flush_order_buffer()
+        await self._flush_order_buffer(force=True)
         try:
             await self._deliver_due_notifications()
             pending = await get_pending_notification_count()
@@ -1035,12 +1037,17 @@ class BlockchainMonitor:
             async with self._order_buffer_lock:
                 self._order_buffer.append(item)
                 self._pending_order_keys.add(event_key)
+                now = time.monotonic()
+                if self._order_buffer_started_at is None:
+                    self._order_buffer_started_at = now
+                self._order_buffer_updated_at = now
 
     async def _order_flush_loop(self) -> None:
-        """Periodically flush buffered order updates as one notification."""
+        """Flush order bursts after a quiet period, with bounded latency."""
+        poll_interval = min(max(settings.ORDER_BUFFER_SECONDS / 4, 0.1), 1.0)
         while self._running:
             try:
-                await asyncio.sleep(settings.ORDER_BUFFER_SECONDS)
+                await asyncio.sleep(poll_interval)
                 await self._flush_order_buffer()
 
             except asyncio.CancelledError:
@@ -1048,12 +1055,22 @@ class BlockchainMonitor:
             except Exception:
                 logger.exception("Error in order flush loop.")
 
-    async def _flush_order_buffer(self) -> None:
+    async def _flush_order_buffer(self, *, force: bool = False) -> None:
         async with self._order_buffer_lock:
             if not self._order_buffer:
                 return
+            now = time.monotonic()
+            started_at = self._order_buffer_started_at or now
+            updated_at = self._order_buffer_updated_at or now
+            if not force and (
+                now - updated_at < settings.ORDER_BUFFER_SECONDS
+                and now - started_at < settings.ORDER_MAX_WAIT_SECONDS
+            ):
+                return
             batched = self._order_buffer
             self._order_buffer = []
+            self._order_buffer_started_at = None
+            self._order_buffer_updated_at = None
 
         try:
             unseen = await get_unprocessed_event_keys(
@@ -1072,6 +1089,10 @@ class BlockchainMonitor:
             logger.exception("Failed to persist buffered orders; re-queueing.")
             async with self._order_buffer_lock:
                 self._order_buffer[0:0] = batched
+                retry_time = time.monotonic()
+                if self._order_buffer_started_at is None:
+                    self._order_buffer_started_at = started_at
+                self._order_buffer_updated_at = retry_time
 
     async def _send_order_batch(self, items: list[dict[str, Any]]) -> None:
         """Send buffered order updates, merging bursts into one message."""
@@ -1127,6 +1148,17 @@ class BlockchainMonitor:
             return
 
         lang = settings.BOT_LANGUAGE
+        by_address: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for item in to_notify:
+            by_address[item["address_raw"].lower()].append(item)
+
+        for address_items in by_address.values():
+            await self._send_order_notifications(address_items, lang)
+
+    async def _send_order_notifications(
+        self, to_notify: list[dict[str, Any]], lang: str
+    ) -> None:
+        """Persist either detailed orders or one readable burst summary."""
         if len(to_notify) == 1:
             it = to_notify[0]
             msg = get_text(lang, "order_update_alert", **it)
@@ -1138,6 +1170,69 @@ class BlockchainMonitor:
             )
             self._pending_order_keys.discard(it["_event_key"])
             await self._advance_order_cursors([it])
+            return
+
+        if len(to_notify) > settings.ORDER_BURST_SUMMARY_THRESHOLD:
+            groups: dict[tuple[str, str, str], list[dict[str, Any]]] = defaultdict(list)
+            for item in to_notify:
+                key = (item["coin"], item["status_badge"], item["dir_badge"])
+                groups[key].append(item)
+
+            group_lines: list[str] = []
+            for (coin, status_badge, dir_badge), group_items in groups.items():
+                prices = [
+                    _safe_float(str(item["limit_px"]).replace(",", ""))
+                    for item in group_items
+                ]
+                sizes = [
+                    _safe_float(str(item["orig_sz"]).replace(",", ""))
+                    for item in group_items
+                ]
+                notionals = [
+                    _safe_float(
+                        str(item["notional"]).replace("$", "").replace(",", "")
+                    )
+                    for item in group_items
+                ]
+                low, high = min(prices), max(prices)
+                price_range = (
+                    format_price(low)
+                    if abs(high - low) < 1e-12
+                    else f"{format_price(low)} – {format_price(high)}"
+                )
+                group_lines.append(
+                    get_text(
+                        lang,
+                        "order_burst_group",
+                        status_badge=status_badge,
+                        coin=coin,
+                        dir_badge=dir_badge,
+                        count=len(group_items),
+                        size=format_crypto_amount(sum(sizes)),
+                        notional=f"${sum(notionals):,.2f}",
+                        price_range=price_range,
+                    )
+                )
+
+            ordered = sorted(to_notify, key=lambda item: item["_event_time"])
+            msg = get_text(
+                lang,
+                "order_burst_alert",
+                count=len(to_notify),
+                address_display=to_notify[0]["address_display"],
+                groups="\n".join(group_lines),
+                start_time=ordered[0]["time"],
+                end_time=ordered[-1]["time"],
+            )
+            event_keys = [
+                (item["_event_key"], item["_event_time"]) for item in to_notify
+            ]
+            await self._record_notification(
+                event_keys, to_notify[0]["address_raw"], "orders", msg
+            )
+            for event_key, _ in event_keys:
+                self._pending_order_keys.discard(event_key)
+            await self._advance_order_cursors(to_notify)
             return
 
         # Batch message; chunk at ~3500 chars to stay under Telegram limits.
