@@ -67,7 +67,7 @@ _monitor: Any = None  # services.monitor.BlockchainMonitor
 _context_cache: dict[str, dict[str, Any]] = {}
 
 _EVM_ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
-NOTE_MAX_LENGTH = 200
+NOTE_MAX_LENGTH = 32
 NOTIFICATION_TYPES = frozenset({"fills", "orders", "events", "fundings", "ledger"})
 
 
@@ -384,7 +384,11 @@ async def cmd_add(message: Message) -> None:
         }
         if len(new_addresses) > _monitor.available_realtime_slots():
             await message.answer(
-                get_text(lang, "ws_capacity_reached", limit=settings.MAX_WS_USERS)
+                get_text(
+                    lang,
+                    "ws_capacity_reached",
+                    max_users=settings.MAX_WS_USERS,
+                )
             )
             return
 
@@ -570,7 +574,13 @@ def _build_user_settings_keyboard(
             state_str = get_text(lang, "state_off")
             next_val = "global"
         else:
-            state_str = get_text(lang, "state_global")
+            global_enabled = (
+                _monitor.is_notify_enabled("", t) if _monitor else True
+            )
+            global_state = get_text(
+                lang, "state_on" if global_enabled else "state_off"
+            )
+            state_str = get_text(lang, "state_global", state=global_state)
             next_val = "1"
 
         btn = InlineKeyboardButton(

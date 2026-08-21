@@ -9,7 +9,7 @@ MESSAGES: dict[str, dict[str, str]] = {
     "en": {
         "welcome": (
             "👋 <b>Welcome to Hyperliquid Monitor!</b>\n\n"
-            "An efficient, real-time address tracking assistant.\n\n"
+            "A concise, real-time address tracking assistant.\n\n"
             "➕ <b>1. Add & Remark (/add)</b>\n"
             "• Single: <code>/add &lt;address&gt; [note]</code>\n"
             "• Batch: <code>/add 0x111 Note A, 0x222 Note B</code>\n"
@@ -43,44 +43,28 @@ MESSAGES: dict[str, dict[str, str]] = {
         "list_no_results": "🔍 No address or remark matched your search.",
         "list_header": "📋 <b>Monitored Addresses:</b>\n\n",
         "tx_alert": (
-            "<b>{dir_badge} {coin}</b> · <b>{notional}</b>\n"
+            "<b>{dir_badge} · {coin}</b>  <b>{notional}</b>\n"
             "👤 {address_display}\n\n"
-            "📊 <b>Avg Price:</b> <code>{price}</code>\n"
-            "📦 <b>Total Size:</b> <code>{size} {coin}</code>\n"
-            "💵 <b>Total Value:</b> <code>{notional}</code>\n"
+            "💹 <code>{price}</code> × <code>{size} {coin}</code>\n"
             "{pnl_line}"
-            "🏷️ <b>Fee:</b> <code>{fee}</code> ({role})\n"
-            "🕒 <b>Time:</b> <code>{time}</code>\n"
+            "🏷️ <code>{fee}</code> · {role}\n"
+            "🕒 <code>{time}</code>"
             "{extra_line}"
         ),
         "order_update_alert": (
-            "<b>{status_badge}</b> · <b>{coin}</b>\n"
-            "🧭 <b>Side:</b> {dir_badge}\n"
+            "<b>{status_badge}</b> · <b>{coin}</b> · {dir_badge}\n"
             "👤 {address_display}\n\n"
-            "🎯 <b>Limit Price:</b> <code>{price}</code>\n"
-            "📦 <b>Order Size:</b> <code>{orig_sz} {coin}</code>\n"
-            "⏳ <b>Remaining:</b> <code>{sz} {coin}</code>\n"
-            "💵 <b>Order Value:</b> <code>{notional}</code>\n"
-            "⚙️ <b>Type:</b> <code>{order_type}</code>\n"
-            "⏱️ <b>TIF:</b> <code>{time_in_force}</code>\n"
-            "🛡️ <b>Reduce Only:</b> <code>{reduce_only}</code>\n"
-            "🕒 <b>Time:</b> <code>{time}</code>\n"
-            "🔗 <b>Order ID:</b> <code>#{oid}</code>"
+            "🎯 <code>{price}</code> × <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
+            "⏳ Remaining <code>{sz} {coin}</code>\n"
+            "⚙️ <code>{order_type}</code> · <code>{time_in_force}</code> · Reduce-only <code>{reduce_only}</code>\n"
+            "🕒 <code>{time}</code> · <code>#{oid}</code>"
         ),
         "order_updates_batch_alert": "📝 <b>Order Updates ({count})</b>\n\n{items}",
         "order_update_item": (
-            "• <b>{status_badge}</b> · <b>{coin}</b>\n"
-            "  🧭 <b>Side:</b> {dir_badge}\n"
+            "• <b>{status_badge}</b> · <b>{coin}</b> · {dir_badge}\n"
             "  👤 {address_display}\n"
-            "  🎯 <b>Price:</b> <code>{price}</code>\n"
-            "  📦 <b>Size:</b> <code>{orig_sz}</code>\n"
-            "  ⏳ <b>Remaining:</b> <code>{sz}</code>\n"
-            "  💵 <b>Value:</b> <code>{notional}</code>\n"
-            "  ⚙️ <b>Type:</b> <code>{order_type}</code>\n"
-            "  ⏱️ <b>TIF:</b> <code>{time_in_force}</code>\n"
-            "  🛡️ <b>Reduce Only:</b> <code>{reduce_only}</code>\n"
-            "  🕒 <b>Time:</b> <code>{time}</code>\n"
-            "  🔗 <b>Order ID:</b> <code>#{oid}</code>"
+            "  🎯 <code>{price}</code> × <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
+            "  ⚙️ <code>{order_type}</code> · <code>{time_in_force}</code> · <code>#{oid}</code>"
         ),
         "funding_alert": (
             "💸 <b>Funding Settlement</b> · <b>{coin}</b>\n"
@@ -206,13 +190,13 @@ MESSAGES: dict[str, dict[str, str]] = {
         "btn_confirm_delete": "⚠️ Confirm Delete",
         "fetch_failed": "❌ Failed to fetch data from Hyperliquid. Please retry.",
         "operation_failed": "❌ Operation failed. Please retry.",
-        "ws_capacity_reached": "⚠️ Monitoring limit reached ({max_users} addresses). Running in polling mode for extra addresses.",
-        "ws_capacity_startup": "⚠️ {count} addresses exceed WebSocket monitoring capacity ({max_users}). They will be updated via REST polling.",
+        "ws_capacity_reached": "⚠️ Hyperliquid allows at most {max_users} real-time addresses per IP. Remove an existing address before adding another.",
+        "ws_capacity_startup": "⚠️ {count} stored addresses exceed the {max_users}-address WebSocket limit and are inactive. Remove active addresses to promote them.",
     },
     "zh": {
         "welcome": (
             "👋 <b>欢迎使用 Hyperliquid 链上监控机器人！</b>\n\n"
-            "高效、精准、零延迟的巨鲸与地址追踪助手。\n\n"
+            "高效、清晰的实时巨鲸与地址追踪助手。\n\n"
             "➕ <b>1. 添加与备注 (/add)</b>\n"
             "• 单个: <code>/add &lt;地址&gt; [备注]</code>\n"
             "• 批量独立备注: <code>/add 0x111 巨鲸A, 0x222 巨鲸B</code>\n"
@@ -246,44 +230,28 @@ MESSAGES: dict[str, dict[str, str]] = {
         "list_no_results": "🔍 未找到匹配的地址或备注。",
         "list_header": "📋 <b>监控地址看板:</b>\n\n",
         "tx_alert": (
-            "<b>{dir_badge} {coin}</b> · <b>{notional}</b>\n"
+            "<b>{dir_badge} · {coin}</b>  <b>{notional}</b>\n"
             "👤 {address_display}\n\n"
-            "📊 <b>成交均价:</b> <code>{price}</code>\n"
-            "📦 <b>成交数量:</b> <code>{size} {coin}</code>\n"
-            "💵 <b>成交总额:</b> <code>{notional}</code>\n"
+            "💹 <code>{price}</code> × <code>{size} {coin}</code>\n"
             "{pnl_line}"
-            "🏷️ <b>手续费:</b> <code>{fee}</code> ({role})\n"
-            "🕒 <b>成交时间:</b> <code>{time}</code>\n"
+            "🏷️ <code>{fee}</code> · {role}\n"
+            "🕒 <code>{time}</code>"
             "{extra_line}"
         ),
         "order_update_alert": (
-            "<b>{status_badge}</b> · <b>{coin}</b>\n"
-            "🧭 <b>委托方向:</b> {dir_badge}\n"
+            "<b>{status_badge}</b> · <b>{coin}</b> · {dir_badge}\n"
             "👤 {address_display}\n\n"
-            "🎯 <b>委托价格:</b> <code>{price}</code>\n"
-            "📦 <b>委托数量:</b> <code>{orig_sz} {coin}</code>\n"
-            "⏳ <b>剩余数量:</b> <code>{sz} {coin}</code>\n"
-            "💵 <b>委托总额:</b> <code>{notional}</code>\n"
-            "⚙️ <b>订单类型:</b> <code>{order_type}</code>\n"
-            "⏱️ <b>有效方式:</b> <code>{time_in_force}</code>\n"
-            "🛡️ <b>只减仓:</b> <code>{reduce_only}</code>\n"
-            "🕒 <b>更新时间:</b> <code>{time}</code>\n"
-            "🔗 <b>订单 ID:</b> <code>#{oid}</code>"
+            "🎯 <code>{price}</code> × <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
+            "⏳ 剩余 <code>{sz} {coin}</code>\n"
+            "⚙️ <code>{order_type}</code> · <code>{time_in_force}</code> · 只减仓 <code>{reduce_only}</code>\n"
+            "🕒 <code>{time}</code> · <code>#{oid}</code>"
         ),
         "order_updates_batch_alert": "📝 <b>订单状态更新 ({count} 笔)</b>\n\n{items}",
         "order_update_item": (
-            "• <b>{status_badge}</b> · <b>{coin}</b>\n"
-            "  🧭 <b>委托方向:</b> {dir_badge}\n"
+            "• <b>{status_badge}</b> · <b>{coin}</b> · {dir_badge}\n"
             "  👤 {address_display}\n"
-            "  🎯 <b>委托价格:</b> <code>{price}</code>\n"
-            "  📦 <b>委托数量:</b> <code>{orig_sz}</code>\n"
-            "  ⏳ <b>剩余数量:</b> <code>{sz}</code>\n"
-            "  💵 <b>委托总额:</b> <code>{notional}</code>\n"
-            "  ⚙️ <b>订单类型:</b> <code>{order_type}</code>\n"
-            "  ⏱️ <b>有效方式:</b> <code>{time_in_force}</code>\n"
-            "  🛡️ <b>只减仓:</b> <code>{reduce_only}</code>\n"
-            "  🕒 <b>更新时间:</b> <code>{time}</code>\n"
-            "  🔗 <b>订单 ID:</b> <code>#{oid}</code>"
+            "  🎯 <code>{price}</code> × <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
+            "  ⚙️ <code>{order_type}</code> · <code>{time_in_force}</code> · <code>#{oid}</code>"
         ),
         "funding_alert": (
             "💸 <b>资金费结算</b> · <b>{coin}</b>\n"
@@ -409,8 +377,8 @@ MESSAGES: dict[str, dict[str, str]] = {
         "btn_confirm_delete": "⚠️ 确认删除",
         "fetch_failed": "❌ 获取 Hyperliquid 链上数据失败，请稍后重试。",
         "operation_failed": "❌ 操作执行失败，请稍后重试。",
-        "ws_capacity_reached": "⚠️ 监控地址数量达到 WS 实时连接上限 ({max_users})，超出部分将自动采用轮询模式。",
-        "ws_capacity_startup": "⚠️ 已监控地址中有 {count} 个超出 WebSocket 上限 ({max_users})，已自动转为 REST 轮询。",
+        "ws_capacity_reached": "⚠️ Hyperliquid 每个 IP 最多实时监控 {max_users} 个地址。请先移除一个现有地址，再添加新地址。",
+        "ws_capacity_startup": "⚠️ 数据库中有 {count} 个地址超出 {max_users} 个 WebSocket 地址上限，当前不会收到实时通知；移除活跃地址后会自动补位。",
     },
 }
 

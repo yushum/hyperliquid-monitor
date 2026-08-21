@@ -23,7 +23,9 @@ def format_timestamp(timestamp_ms: Any, lang_code: str = "zh") -> str:
         value = datetime.fromtimestamp(timestamp / 1000.0, tz=timezone)
     except (TypeError, ValueError, OSError, OverflowError, ZoneInfoNotFoundError):
         return "未知时间" if lang_code and "zh" in lang_code.lower() else "Unknown time"
-    return f"{value:%Y-%m-%d %H:%M:%S} {value.tzname() or settings.DISPLAY_TIMEZONE}"
+    offset = value.strftime("%z")
+    offset_display = f"UTC{offset[:3]}:{offset[3:]}" if offset else settings.DISPLAY_TIMEZONE
+    return f"{value:%Y-%m-%d %H:%M:%S} {offset_display}"
 
 
 def unavailable(lang_code: str = "zh") -> str:
@@ -50,6 +52,21 @@ def format_address_display(
     if note and str(note).strip():
         return f"<b>{escape_html(str(note).strip())}</b> (<code>{escape_html(addr_str)}</code>)"
     return f"<code>{escape_html(addr_str)}</code>"
+
+
+def format_notification_address(
+    address: Any, note: Any = None, lang_code: str = "zh"
+) -> str:
+    """Render a compact wallet identity for glanceable notifications."""
+    if not address:
+        return format_address_display(address, note, lang_code)
+    addr_str = str(address).strip()
+    short = (
+        f"{addr_str[:6]}…{addr_str[-4:]}" if len(addr_str) > 14 else addr_str
+    )
+    if note and str(note).strip():
+        return f"<b>{escape_html(str(note).strip())}</b> · <code>{escape_html(short)}</code>"
+    return f"<code>{escape_html(short)}</code>"
 
 
 def format_usd(amount: Any, show_sign: bool = False, decimals: int = 2) -> str:

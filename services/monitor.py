@@ -15,6 +15,8 @@ from infrastructure.db import (
     get_all_address_settings,
     get_due_notifications,
     get_last_fill_time,
+    get_last_funding_time,
+    get_last_ledger_time,
     get_last_order_time,
     get_pending_notification_count,
     get_setting,
@@ -24,6 +26,8 @@ from infrastructure.db import (
     record_events,
     reschedule_notification,
     update_last_fill_time,
+    update_last_funding_time,
+    update_last_ledger_time,
     update_last_order_time,
 )
 from services.notifier import BaseNotifier, PermanentNotificationError
@@ -31,6 +35,7 @@ from tg_bot.formatting import (
     escape_html,
     format_address_display,
     format_crypto_amount,
+    format_notification_address,
     format_pnl,
     format_price,
     format_timestamp,
@@ -94,6 +99,8 @@ class BlockchainMonitor:
         # Buffer for aggregating split fills within a short time window
         # key: (address, oid, coin) -> list[fills]
         self._fill_buffer: dict[tuple, list[dict[str, Any]]] = defaultdict(list)
+        self._fill_buffer_started_at: dict[tuple, float] = {}
+        self._fill_buffer_updated_at: dict[tuple, float] = {}
         self._buffer_lock = asyncio.Lock()
         self._pending_fill_keys: set[str] = set()
 
@@ -260,7 +267,7 @@ class BlockchainMonitor:
         self._outbox_task = asyncio.create_task(self._outbox_loop())
         if len(self._monitored_addresses) > settings.MAX_WS_USERS:
             skipped = len(self._monitored_addresses) - settings.MAX_WS_USERS
-            logger.exception(
+            logger.error(
                 "Hyperliquid allows only %d realtime users per IP; %d addresses are inactive.",
                 settings.MAX_WS_USERS,
                 skipped,
@@ -269,8 +276,8 @@ class BlockchainMonitor:
                 get_text(
                     settings.BOT_LANGUAGE,
                     "ws_capacity_startup",
-                    active=settings.MAX_WS_USERS,
-                    skipped=skipped,
+                    count=skipped,
+                    max_users=settings.MAX_WS_USERS,
                 )
             )
         logger.info(
@@ -309,7 +316,7 @@ class BlockchainMonitor:
             except asyncio.CancelledError:
                 pass
 
-        await self._flush_fill_buffer()
+        await self._flush_fill_buffer(force=True)
         await self._flush_order_buffer()
         try:
             await self._deliver_due_notifications()
@@ -338,6 +345,12 @@ class BlockchainMonitor:
     def format_address_display(self, address: str, lang_code: str = "zh") -> str:
         note = self.get_address_note(address)
         return format_address_display(address, note, lang_code)
+
+    def format_notification_address(
+        self, address: str, lang_code: str = "zh"
+    ) -> str:
+        note = self.get_address_note(address)
+        return format_notification_address(address, note, lang_code)
 
     async def subscribe(
         self,
@@ -496,6 +509,7 @@ class BlockchainMonitor:
                     logger.info("Connected Hyperliquid WebSocket for %s.", address)
                     await self._send_sub(ws, address, subscribe=True)
                     await self._recover_missed_orders(address)
+                    await self._recover_missed_account_events(address)
 
                     # Start application-level keepalive
                     ping_task = asyncio.create_task(self._ping_loop(ws))
@@ -569,6 +583,57 @@ class BlockchainMonitor:
         except Exception:
             logger.exception("Failed to recover order history for %s.", address)
 
+    async def _recover_missed_account_events(self, address: str) -> None:
+        """Backfill funding and ledger events that may have occurred offline."""
+        if not self._hl_client:
+            return
+        baseline = self._address_subscribed_at.get(address, self._start_time)
+        try:
+            funding_cursor = await get_last_funding_time(address)
+            funding_start = funding_cursor or baseline
+            get_funding = getattr(self._hl_client, "get_user_funding", None)
+            if get_funding:
+                fundings = await get_funding(address, funding_start)
+                if fundings:
+                    await self._handle_user_fundings(
+                        {
+                            "data": {
+                                "user": address,
+                                "isSnapshot": False,
+                                "fundings": fundings,
+                            }
+                        },
+                        address,
+                        allow_historical=True,
+                    )
+                elif funding_cursor == 0:
+                    await update_last_funding_time(address, baseline)
+        except Exception:
+            logger.exception("Failed to recover funding history for %s.", address)
+
+        try:
+            ledger_cursor = await get_last_ledger_time(address)
+            ledger_start = ledger_cursor or baseline
+            get_ledger = getattr(self._hl_client, "get_user_ledger_updates", None)
+            if get_ledger:
+                updates = await get_ledger(address, ledger_start)
+                if updates:
+                    await self._handle_ledger_updates(
+                        {
+                            "data": {
+                                "user": address,
+                                "isSnapshot": False,
+                                "updates": updates,
+                            }
+                        },
+                        address,
+                        allow_historical=True,
+                    )
+                elif ledger_cursor == 0:
+                    await update_last_ledger_time(address, baseline)
+        except Exception:
+            logger.exception("Failed to recover ledger history for %s.", address)
+
     async def _ping_loop(self, ws: aiohttp.ClientWebSocketResponse) -> None:
         """Send application-level pings to keep the Hyperliquid WS alive."""
         try:
@@ -637,6 +702,9 @@ class BlockchainMonitor:
                     buffered_fill = dict(fill)
                     buffered_fill["_event_key"] = event_key
                     self._fill_buffer[key].append(buffered_fill)
+                    now = time.monotonic()
+                    self._fill_buffer_started_at.setdefault(key, now)
+                    self._fill_buffer_updated_at[key] = now
                     self._pending_fill_keys.add(event_key)
                     # Fill payloads include the user, so learn who owns this order.
                     if oid:
@@ -646,10 +714,11 @@ class BlockchainMonitor:
             logger.exception("Error handling WS message.")
 
     async def _buffer_flush_loop(self) -> None:
-        """Periodically flushes the fill buffer and sends aggregated alerts."""
+        """Flush fill groups after a quiet period, with a bounded max wait."""
+        poll_interval = min(max(settings.FILL_BUFFER_SECONDS / 4, 0.1), 1.0)
         while self._running:
             try:
-                await asyncio.sleep(settings.FILL_BUFFER_SECONDS)
+                await asyncio.sleep(poll_interval)
                 await self._flush_fill_buffer()
 
             except asyncio.CancelledError:
@@ -657,12 +726,28 @@ class BlockchainMonitor:
             except Exception:
                 logger.exception("Error in buffer flush loop.")
 
-    async def _flush_fill_buffer(self) -> None:
+    async def _flush_fill_buffer(self, *, force: bool = False) -> None:
+        now = time.monotonic()
         async with self._buffer_lock:
             if not self._fill_buffer:
                 return
-            current_buffer = self._fill_buffer
-            self._fill_buffer = defaultdict(list)
+            ready_keys = [
+                key
+                for key in self._fill_buffer
+                if force
+                or now - self._fill_buffer_updated_at.get(key, now)
+                >= settings.FILL_BUFFER_SECONDS
+                or now - self._fill_buffer_started_at.get(key, now)
+                >= settings.FILL_MAX_WAIT_SECONDS
+            ]
+            if not ready_keys:
+                return
+            current_buffer = {
+                key: self._fill_buffer.pop(key) for key in ready_keys
+            }
+            for key in ready_keys:
+                self._fill_buffer_started_at.pop(key, None)
+                self._fill_buffer_updated_at.pop(key, None)
 
         for buffer_key, fills in current_buffer.items():
             address, _oid, _coin = buffer_key
@@ -691,6 +776,9 @@ class BlockchainMonitor:
                 logger.exception("Failed to persist buffered fills; re-queueing.")
                 async with self._buffer_lock:
                     self._fill_buffer[buffer_key][0:0] = fills
+                    retry_time = time.monotonic()
+                    self._fill_buffer_started_at.setdefault(buffer_key, retry_time)
+                    self._fill_buffer_updated_at[buffer_key] = retry_time
 
     async def _handle_aggregated_fills(
         self, fills: list[dict[str, Any]], address: str
@@ -744,7 +832,7 @@ class BlockchainMonitor:
 
         msg = None
         if should_notify:
-            address_display = self.format_address_display(address, lang)
+            address_display = self.format_notification_address(address, lang)
             pnl_line = ""
             if abs(total_closed_pnl) > 0.0001:
                 pnl_formatted = format_pnl(total_closed_pnl, lang)
@@ -764,7 +852,7 @@ class BlockchainMonitor:
                     extra_parts.append(f"🔗 <b>交易哈希:</b> <code>{tx_hash}</code>")
                 else:
                     extra_parts.append(f"🔗 <b>Tx Hash:</b> <code>{tx_hash}</code>")
-            extra_line = "\n".join(extra_parts)
+            extra_line = "\n" + "\n".join(extra_parts) if extra_parts else ""
 
             msg = get_text(
                 lang,
@@ -854,8 +942,12 @@ class BlockchainMonitor:
                 oid
                 and source_address
                 and self._hl_client
+                and hasattr(self._hl_client, "get_order_status")
                 and not details
-                and "orderType" not in order
+                and any(
+                    field not in order
+                    for field in ("orderType", "tif", "reduceOnly", "origSz")
+                )
             ):
                 try:
                     status_record = await self._hl_client.get_order_status(
@@ -913,7 +1005,7 @@ class BlockchainMonitor:
                 await update_last_order_time(address, int(ts or 0))
                 continue
 
-            address_display = self.format_address_display(address, lang) if address and address != get_text(lang, "addr_unknown_multi") else (
+            address_display = self.format_notification_address(address, lang) if address and address != get_text(lang, "addr_unknown_multi") else (
                 f"<i>{escape_html(address)}</i>" if address else "<i>未知</i>"
             )
 
@@ -1152,7 +1244,7 @@ class BlockchainMonitor:
         time_str = format_timestamp(ts, lang)
 
         if address:
-            address_display = self.format_address_display(address, lang)
+            address_display = self.format_notification_address(address, lang)
             msg = get_text(
                 lang,
                 "event_alert",
@@ -1175,7 +1267,11 @@ class BlockchainMonitor:
             )
 
     async def _handle_user_fundings(
-        self, data: dict[str, Any], source_address: str | None = None
+        self,
+        data: dict[str, Any],
+        source_address: str | None = None,
+        *,
+        allow_historical: bool = False,
     ) -> None:
         payload = data.get("data", {})
         if not payload or payload.get("isSnapshot"):
@@ -1184,6 +1280,7 @@ class BlockchainMonitor:
         lang = settings.BOT_LANGUAGE
         user = str(payload.get("user") or source_address or "")
         fundings = payload.get("fundings", [])
+        cursor = await get_last_funding_time(user) if user else 0
 
         for f in fundings:
             coin = escape_html(f.get("coin") or unavailable(lang))
@@ -1196,7 +1293,7 @@ class BlockchainMonitor:
                 f"{f.get('usdc', '')}:{f.get('fundingRate', '')}"
             )
 
-            if ts < self._start_time:
+            if not allow_historical and int(ts or 0) < cursor:
                 continue
 
             if (
@@ -1204,10 +1301,11 @@ class BlockchainMonitor:
                 and abs(usdc) < self.min_notional_threshold
             ):
                 await record_events([(event_key, int(ts or 0))])
+                await update_last_funding_time(user, int(ts or 0))
                 continue
 
             time_str = format_timestamp(ts, lang)
-            address_display = self.format_address_display(user, lang)
+            address_display = self.format_notification_address(user, lang)
 
             if usdc > 0.000001:
                 payment_display = f"🟢 <code>+${usdc:,.4f}</code>"
@@ -1237,9 +1335,14 @@ class BlockchainMonitor:
                 "fundings",
                 msg if self.is_notify_enabled(user, "fundings") else None,
             )
+            await update_last_funding_time(user, int(ts or 0))
 
     async def _handle_ledger_updates(
-        self, data: dict[str, Any], source_address: str | None = None
+        self,
+        data: dict[str, Any],
+        source_address: str | None = None,
+        *,
+        allow_historical: bool = False,
     ) -> None:
         payload = data.get("data", {})
         if not payload or payload.get("isSnapshot"):
@@ -1248,6 +1351,7 @@ class BlockchainMonitor:
         lang = settings.BOT_LANGUAGE
         user = str(payload.get("user") or source_address or "")
         updates = payload.get("updates", [])
+        cursor = await get_last_ledger_time(user) if user else 0
 
         for u in updates:
             delta = u.get("delta", {})
@@ -1262,7 +1366,7 @@ class BlockchainMonitor:
                 f"{delta.get('type', '')}:{delta.get('usdc', '')}"
             )
 
-            if ts < self._start_time:
+            if not allow_historical and int(ts or 0) < cursor:
                 continue
 
             if (
@@ -1270,10 +1374,11 @@ class BlockchainMonitor:
                 and abs(usdc) < self.min_notional_threshold
             ):
                 await record_events([(event_key, int(ts or 0))])
+                await update_last_ledger_time(user, int(ts or 0))
                 continue
 
             time_str = format_timestamp(ts, lang)
-            address_display = self.format_address_display(user, lang)
+            address_display = self.format_notification_address(user, lang)
 
             if usdc > 0.000001:
                 amount_display = f"🟢 <code>+${usdc:,.4f}</code>"
@@ -1307,3 +1412,4 @@ class BlockchainMonitor:
                 "ledger",
                 msg if self.is_notify_enabled(user, "ledger") else None,
             )
+            await update_last_ledger_time(user, int(ts or 0))

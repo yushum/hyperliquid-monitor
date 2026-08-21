@@ -142,3 +142,39 @@ class HyperliquidClient:
         payload = {"type": "historicalOrders", "user": user_address}
         data = await self._post(payload, user_address)
         return data if isinstance(data, list) else []
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception(_is_retryable),
+        reraise=True,
+    )
+    async def get_user_funding(
+        self, user_address: str, start_time: int
+    ) -> list[dict[str, Any]]:
+        """Return funding records at or after ``start_time`` for gap recovery."""
+        payload = {
+            "type": "userFunding",
+            "user": user_address,
+            "startTime": int(start_time),
+        }
+        data = await self._post(payload, user_address)
+        return data if isinstance(data, list) else []
+
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        retry=retry_if_exception(_is_retryable),
+        reraise=True,
+    )
+    async def get_user_ledger_updates(
+        self, user_address: str, start_time: int
+    ) -> list[dict[str, Any]]:
+        """Return non-funding ledger records for reconnect gap recovery."""
+        payload = {
+            "type": "userNonFundingLedgerUpdates",
+            "user": user_address,
+            "startTime": int(start_time),
+        }
+        data = await self._post(payload, user_address)
+        return data if isinstance(data, list) else []

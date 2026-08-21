@@ -56,7 +56,8 @@ touch .env
 | `LOG_LEVEL` | ❌ | 控制台日志级别 (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
 | `BOT_LANGUAGE` | ❌ | 默认展示语言 (`zh` 或 `en`) | `zh` |
 | `DISPLAY_TIMEZONE` | ❌ | Telegram 消息使用的 IANA 时区 | `Asia/Shanghai` |
-| `FILL_BUFFER_SECONDS` | ❌ | 成交聚合窗口（秒） | `1.0` |
+| `FILL_BUFFER_SECONDS` | ❌ | 同一订单最后一笔成交后的静默聚合时间（秒） | `3.0` |
+| `FILL_MAX_WAIT_SECONDS` | ❌ | 连续成交的最长聚合等待时间（秒） | `15.0` |
 | `ORDER_BUFFER_SECONDS` | ❌ | 订单更新聚合窗口(秒)，窗口内多条订单通知合并成一条 | `2.0` |
 | `MAX_WS_USERS` | ❌ | 实时 WebSocket 地址上限；官方每 IP 最大为 10 | `10` |
 | `OUTBOX_POLL_SECONDS` | ❌ | 持久化通知队列扫描间隔（秒） | `1.0` |

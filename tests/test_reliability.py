@@ -1,4 +1,5 @@
 import os
+import time
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -6,6 +7,7 @@ os.environ.setdefault("TG_BOT_TOKEN", "test-token")
 os.environ.setdefault("TG_ADMIN_CHAT_ID", "1")
 os.environ.setdefault("BOT_LANGUAGE", "zh")
 
+from core.config import settings
 from services.monitor import BlockchainMonitor, MonitorCapacityError
 from services.notifier import BaseNotifier, PermanentNotificationError
 
@@ -47,8 +49,86 @@ class HistoricalClient:
     async def get_historical_orders(self, address):
         return self.orders
 
+    async def get_order_status(self, address, oid):
+        return None
+
+
+class AccountHistoryClient:
+    def __init__(self, fundings=None, ledger=None):
+        self.fundings = fundings or []
+        self.ledger = ledger or []
+        self.calls = []
+
+    async def get_user_funding(self, address, start_time):
+        self.calls.append(("funding", address, start_time))
+        return self.fundings
+
+    async def get_user_ledger_updates(self, address, start_time):
+        self.calls.append(("ledger", address, start_time))
+        return self.ledger
+
 
 class ReliabilityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fill_buffer_waits_for_quiet_period_but_honors_max_wait(self) -> None:
+        address = "0x" + "1" * 40
+        key = (address, 7, "BTC")
+        monitor = BlockchainMonitor(StubNotifier())
+        monitor._fill_buffer[key].append(
+            {"_event_key": "fill:1", "time": 100, "coin": "BTC"}
+        )
+        now = time.monotonic()
+        monitor._fill_buffer_started_at[key] = now
+        monitor._fill_buffer_updated_at[key] = now
+        monitor._handle_aggregated_fills = AsyncMock()
+
+        await monitor._flush_fill_buffer()
+        monitor._handle_aggregated_fills.assert_not_awaited()
+        self.assertIn(key, monitor._fill_buffer)
+
+        monitor._fill_buffer_started_at[key] = (
+            time.monotonic() - settings.FILL_MAX_WAIT_SECONDS - 1
+        )
+        with patch(
+            "services.monitor.get_unprocessed_event_keys",
+            AsyncMock(return_value={"fill:1"}),
+        ):
+            await monitor._flush_fill_buffer()
+        monitor._handle_aggregated_fills.assert_awaited_once()
+        self.assertNotIn(key, monitor._fill_buffer)
+
+    async def test_account_event_recovery_uses_persisted_cursors(self) -> None:
+        address = "0x" + "9" * 40
+        funding = {"time": 201, "coin": "BTC", "usdc": "1"}
+        ledger = {"time": 301, "hash": "0x1", "delta": {"usdc": "2"}}
+        client = AccountHistoryClient([funding], [ledger])
+        monitor = BlockchainMonitor(StubNotifier(), hl_client=client)
+        monitor._address_subscribed_at[address] = 500
+        monitor._handle_user_fundings = AsyncMock()
+        monitor._handle_ledger_updates = AsyncMock()
+
+        with (
+            patch(
+                "services.monitor.get_last_funding_time",
+                AsyncMock(return_value=200),
+            ),
+            patch(
+                "services.monitor.get_last_ledger_time",
+                AsyncMock(return_value=300),
+            ),
+        ):
+            await monitor._recover_missed_account_events(address)
+
+        self.assertEqual(
+            client.calls,
+            [("funding", address, 200), ("ledger", address, 300)],
+        )
+        self.assertTrue(
+            monitor._handle_user_fundings.await_args.kwargs["allow_historical"]
+        )
+        self.assertTrue(
+            monitor._handle_ledger_updates.await_args.kwargs["allow_historical"]
+        )
+
     async def test_source_connection_gives_exact_order_owner_and_enrichment(
         self,
     ) -> None:
@@ -82,6 +162,34 @@ class ReliabilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(item["order_type"], "止损市价单")
         self.assertIn("仅挂单", item["time_in_force"])
         self.assertEqual(item["reduce_only"], "是")
+
+    async def test_order_enrichment_runs_when_reduce_only_is_missing(self) -> None:
+        address = "0x" + "3" * 40
+        monitor = BlockchainMonitor(StubNotifier(), hl_client=EnrichingClient())
+        monitor._monitored_addresses = {address: {}}
+        monitor._address_subscribed_at = {address: 0}
+        group = {
+            "status": "open",
+            "statusTimestamp": 1_700_000_000_000,
+            "order": {
+                "coin": "BTC",
+                "side": "B",
+                "limitPx": "2000",
+                "sz": "2",
+                "origSz": "2",
+                "oid": 100,
+                "orderType": "Limit",
+            },
+        }
+        event_key = monitor._order_event_key(address, group)
+        with patch(
+            "services.monitor.get_unprocessed_event_keys",
+            AsyncMock(return_value={event_key}),
+        ):
+            await monitor._handle_order_updates({"data": [group]}, address)
+
+        self.assertEqual(monitor._order_buffer[0]["dir"], "平空")
+        self.assertEqual(monitor._order_buffer[0]["reduce_only"], "是")
 
     async def test_cached_order_details_are_address_scoped_and_non_destructive(
         self,

@@ -77,6 +77,14 @@ async def init_db() -> None:
             await db.execute(
                 "ALTER TABLE monitored_addresses ADD COLUMN last_order_time INTEGER DEFAULT 0"
             )
+        if "last_funding_time" not in columns:
+            await db.execute(
+                "ALTER TABLE monitored_addresses ADD COLUMN last_funding_time INTEGER DEFAULT 0"
+            )
+        if "last_ledger_time" not in columns:
+            await db.execute(
+                "ALTER TABLE monitored_addresses ADD COLUMN last_ledger_time INTEGER DEFAULT 0"
+            )
 
         await db.execute("""
             CREATE TABLE IF NOT EXISTS bot_settings (
@@ -328,6 +336,49 @@ async def update_last_order_time(address: str, order_time: int) -> None:
             (int(order_time), address.lower()),
         )
         await db.commit()
+
+
+async def _get_event_cursor(address: str, column: str) -> int:
+    if column not in {"last_funding_time", "last_ledger_time"}:
+        raise ValueError("unsupported event cursor")
+    db = await get_db()
+    async with db.execute(
+        f"SELECT {column} FROM monitored_addresses "
+        "WHERE address = ? COLLATE NOCASE",
+        (address.lower(),),
+    ) as cursor:
+        row = await cursor.fetchone()
+        return int(row[0] or 0) if row else 0
+
+
+async def _update_event_cursor(address: str, column: str, event_time: int) -> None:
+    if column not in {"last_funding_time", "last_ledger_time"}:
+        raise ValueError("unsupported event cursor")
+    db = await get_db()
+    async with _db_write_lock:
+        await db.execute(
+            f"UPDATE monitored_addresses "
+            f"SET {column} = MAX(COALESCE({column}, 0), ?) "
+            "WHERE address = ? COLLATE NOCASE",
+            (int(event_time), address.lower()),
+        )
+        await db.commit()
+
+
+async def get_last_funding_time(address: str) -> int:
+    return await _get_event_cursor(address, "last_funding_time")
+
+
+async def update_last_funding_time(address: str, event_time: int) -> None:
+    await _update_event_cursor(address, "last_funding_time", event_time)
+
+
+async def get_last_ledger_time(address: str) -> int:
+    return await _get_event_cursor(address, "last_ledger_time")
+
+
+async def update_last_ledger_time(address: str, event_time: int) -> None:
+    await _update_event_cursor(address, "last_ledger_time", event_time)
 
 
 async def get_setting(key: str, default: str = "") -> str:

@@ -20,7 +20,10 @@ class Settings(BaseSettings):
     HL_WS_URL: str = "wss://api.hyperliquid.xyz/ws"
 
     # Monitor tuning
-    FILL_BUFFER_SECONDS: float = 1.0
+    # Wait for this much quiet time before emitting fills for the same order.
+    FILL_BUFFER_SECONDS: float = 3.0
+    # Emit an active order eventually even if fills keep arriving continuously.
+    FILL_MAX_WAIT_SECONDS: float = 15.0
     ORDER_BUFFER_SECONDS: float = 2.0
     OUTBOX_POLL_SECONDS: float = 1.0
     OUTBOX_RETRY_MAX_SECONDS: float = 300.0
@@ -40,6 +43,7 @@ class Settings(BaseSettings):
 
     @field_validator(
         "FILL_BUFFER_SECONDS",
+        "FILL_MAX_WAIT_SECONDS",
         "ORDER_BUFFER_SECONDS",
         "OUTBOX_POLL_SECONDS",
         "OUTBOX_RETRY_MAX_SECONDS",

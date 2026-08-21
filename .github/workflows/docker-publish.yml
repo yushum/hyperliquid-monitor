@@ -9,6 +9,29 @@ on:
       - master
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run test suite
+        env:
+          TG_BOT_TOKEN: test-token
+          TG_ADMIN_CHAT_ID: '1'
+          DB_PATH: /tmp/hyperliquid-monitor-tests.db
+          RUN_DB_TESTS: '1'
+        run: python -m unittest discover -s tests -v
+
   check-changes:
     runs-on: ubuntu-latest
     outputs:
@@ -32,7 +55,7 @@ jobs:
               - 'tg_bot/**'
 
   build-and-push:
-    needs: check-changes
+    needs: [check-changes, test]
     if: >
       github.event_name == 'workflow_dispatch' ||
       github.ref_type == 'tag' ||

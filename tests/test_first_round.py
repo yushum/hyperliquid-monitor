@@ -1,6 +1,9 @@
+import ast
 import os
+import string
 import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 os.environ.setdefault("TG_BOT_TOKEN", "test-token")
@@ -16,6 +19,7 @@ from services.notifier import BaseNotifier
 from tg_bot.formatting import (
     escape_html,
     format_address_display,
+    format_notification_address,
     format_crypto_amount,
     format_pnl,
     format_price,
@@ -34,6 +38,7 @@ from tg_bot.locales import (
     format_order_type,
     format_time_in_force,
     get_text,
+    MESSAGES,
 )
 
 
@@ -57,6 +62,43 @@ class CapturingNotifier(BaseNotifier):
 
 
 class FormattingTests(unittest.TestCase):
+    def test_literal_locale_calls_supply_all_template_fields(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        formatter = string.Formatter()
+        failures = []
+        for path in root.rglob("*.py"):
+            if "tests" in path.parts:
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for node in ast.walk(tree):
+                if (
+                    not isinstance(node, ast.Call)
+                    or not isinstance(node.func, ast.Name)
+                    or node.func.id != "get_text"
+                    or len(node.args) < 2
+                    or not isinstance(node.args[1], ast.Constant)
+                ):
+                    continue
+                key = node.args[1].value
+                provided = {kw.arg for kw in node.keywords if kw.arg}
+                has_expansion = any(kw.arg is None for kw in node.keywords)
+                if has_expansion:
+                    continue
+                for lang in ("en", "zh"):
+                    fields = {
+                        field
+                        for _, field, _, _ in formatter.parse(
+                            MESSAGES[lang].get(key, "")
+                        )
+                        if field
+                    }
+                    missing = fields - provided
+                    if missing:
+                        failures.append(
+                            f"{path.name}:{node.lineno} {lang}.{key} missing {sorted(missing)}"
+                        )
+        self.assertEqual(failures, [])
+
     def test_missing_order_type_is_explained(self) -> None:
         self.assertEqual(format_order_type(None, "zh"), "普通订单")
         self.assertNotIn("Unknown", format_order_type(None, "zh"))
@@ -83,7 +125,7 @@ class FormattingTests(unittest.TestCase):
         self.assertEqual(escape_html("<主力 & 观察>"), "&lt;主力 &amp; 观察&gt;")
         self.assertEqual(
             format_timestamp(1704067200000, "zh"),
-            "2024-01-01 08:00:00 CST",
+            "2024-01-01 08:00:00 UTC+08:00",
         )
         self.assertEqual(format_timestamp(0, "zh"), "未知时间")
 
@@ -102,6 +144,12 @@ class FormattingTests(unittest.TestCase):
         self.assertEqual(
             format_address_display("0x1234567890abcdef1234567890abcdef12345678", None, "zh"),
             "<code>0x1234567890abcdef1234567890abcdef12345678</code>",
+        )
+        self.assertEqual(
+            format_notification_address(
+                "0x1234567890abcdef1234567890abcdef12345678", "Whale", "zh"
+            ),
+            "<b>Whale</b> · <code>0x1234…5678</code>",
         )
 
         # Price formatting
@@ -153,7 +201,7 @@ class FormattingTests(unittest.TestCase):
             extra_line="",
         )
         first_line = tx_msg.splitlines()[0]
-        self.assertIn("🟢 开多 BTC", first_line)
+        self.assertIn("🟢 开多 · BTC", first_line)
         self.assertIn("$50,000.00", first_line)
         second_line = tx_msg.splitlines()[1]
         self.assertIn("Whale", second_line)
@@ -203,8 +251,9 @@ class FormattingTests(unittest.TestCase):
         alert_lines = order_alert.splitlines()
         self.assertIn("🟡 挂单中", alert_lines[0])
         self.assertIn("BTC", alert_lines[0])
-        self.assertIn("委托方向:</b> 🟢 开多", alert_lines[1])
+        self.assertIn("🟢 开多", alert_lines[0])
         self.assertNotIn(" | ", order_alert)
+        self.assertLessEqual(len(alert_lines), 7)
 
         order_item = get_text(
             "zh",
@@ -225,9 +274,9 @@ class FormattingTests(unittest.TestCase):
             oid=999,
         )
         self.assertNotIn(" | ", order_item)
-        self.assertIn("委托方向:", order_item)
-        self.assertIn("委托价格:", order_item)
-        self.assertIn("剩余数量:", order_item)
+        self.assertIn("🟢 开多", order_item)
+        self.assertIn("1.5000 BTC", order_item)
+        self.assertLessEqual(len(order_item.splitlines()), 4)
 
         pos_detail = get_text(
             "zh",
@@ -256,6 +305,23 @@ class ClientTests(unittest.IsolatedAsyncioTestCase):
         result = await client.get_open_orders("0x" + "1" * 40)
         self.assertEqual(client.payload["type"], "frontendOpenOrders")
         self.assertEqual(result[0]["orderType"], "Limit")
+
+    async def test_account_history_endpoints_include_start_time(self) -> None:
+        client = CapturingClient()
+        await client.get_user_funding("0xabc", 123)
+        self.assertEqual(
+            client.payload,
+            {"type": "userFunding", "user": "0xabc", "startTime": 123},
+        )
+        await client.get_user_ledger_updates("0xabc", 456)
+        self.assertEqual(
+            client.payload,
+            {
+                "type": "userNonFundingLedgerUpdates",
+                "user": "0xabc",
+                "startTime": 456,
+            },
+        )
 
 
 class MonitorTests(unittest.IsolatedAsyncioTestCase):
@@ -394,9 +460,15 @@ class DatabaseTests(unittest.IsolatedAsyncioTestCase):
         await database.update_last_fill_time(address, 100)
         await database.update_last_order_time(address, 300)
         await database.update_last_order_time(address, 150)
+        await database.update_last_funding_time(address, 400)
+        await database.update_last_funding_time(address, 250)
+        await database.update_last_ledger_time(address, 500)
+        await database.update_last_ledger_time(address, 350)
 
         self.assertEqual(await database.get_last_fill_time(address), 200)
         self.assertEqual(await database.get_last_order_time(address), 300)
+        self.assertEqual(await database.get_last_funding_time(address), 400)
+        self.assertEqual(await database.get_last_ledger_time(address), 500)
 
     async def test_permanent_outbox_failure_is_not_retried(self) -> None:
         await database.record_events(
