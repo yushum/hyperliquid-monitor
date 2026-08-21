@@ -57,16 +57,8 @@ def format_address_display(
 def format_notification_address(
     address: Any, note: Any = None, lang_code: str = "zh"
 ) -> str:
-    """Render a compact wallet identity for glanceable notifications."""
-    if not address:
-        return format_address_display(address, note, lang_code)
-    addr_str = str(address).strip()
-    short = (
-        f"{addr_str[:6]}…{addr_str[-4:]}" if len(addr_str) > 14 else addr_str
-    )
-    if note and str(note).strip():
-        return f"<b>{escape_html(str(note).strip())}</b> · <code>{escape_html(short)}</code>"
-    return f"<code>{escape_html(short)}</code>"
+    """Render the complete wallet identity in notifications."""
+    return format_address_display(address, note, lang_code)
 
 
 def format_usd(amount: Any, show_sign: bool = False, decimals: int = 2) -> str:

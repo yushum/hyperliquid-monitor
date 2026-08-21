@@ -149,7 +149,7 @@ class FormattingTests(unittest.TestCase):
             format_notification_address(
                 "0x1234567890abcdef1234567890abcdef12345678", "Whale", "zh"
             ),
-            "<b>Whale</b> · <code>0x1234…5678</code>",
+            "<b>Whale</b> (<code>0x1234567890abcdef1234567890abcdef12345678</code>)",
         )
 
         # Price formatting
@@ -201,7 +201,7 @@ class FormattingTests(unittest.TestCase):
             extra_line="",
         )
         first_line = tx_msg.splitlines()[0]
-        self.assertIn("🟢 开多 · BTC", first_line)
+        self.assertIn("🟢 开多 BTC", first_line)
         self.assertIn("$50,000.00", first_line)
         second_line = tx_msg.splitlines()[1]
         self.assertIn("Whale", second_line)
@@ -251,9 +251,8 @@ class FormattingTests(unittest.TestCase):
         alert_lines = order_alert.splitlines()
         self.assertIn("🟡 挂单中", alert_lines[0])
         self.assertIn("BTC", alert_lines[0])
-        self.assertIn("🟢 开多", alert_lines[0])
+        self.assertIn("委托方向:</b> 🟢 开多", alert_lines[1])
         self.assertNotIn(" | ", order_alert)
-        self.assertLessEqual(len(alert_lines), 7)
 
         order_item = get_text(
             "zh",
@@ -274,9 +273,8 @@ class FormattingTests(unittest.TestCase):
             oid=999,
         )
         self.assertNotIn(" | ", order_item)
-        self.assertIn("🟢 开多", order_item)
+        self.assertIn("委托方向:", order_item)
         self.assertIn("1.5000 BTC", order_item)
-        self.assertLessEqual(len(order_item.splitlines()), 4)
 
         pos_detail = get_text(
             "zh",

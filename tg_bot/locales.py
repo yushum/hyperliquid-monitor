@@ -43,28 +43,40 @@ MESSAGES: dict[str, dict[str, str]] = {
         "list_no_results": "🔍 No address or remark matched your search.",
         "list_header": "📋 <b>Monitored Addresses:</b>\n\n",
         "tx_alert": (
-            "<b>{dir_badge} · {coin}</b>  <b>{notional}</b>\n"
+            "<b>{dir_badge} {coin}</b> · <b>{notional}</b>\n"
             "👤 {address_display}\n\n"
-            "💹 <code>{price}</code> × <code>{size} {coin}</code>\n"
+            "📊 <b>Average Price:</b> <code>{price}</code>\n"
+            "📦 <b>Filled Size:</b> <code>{size} {coin}</code>\n"
+            "💵 <b>Filled Value:</b> <code>{notional}</code>\n"
             "{pnl_line}"
-            "🏷️ <code>{fee}</code> · {role}\n"
-            "🕒 <code>{time}</code>"
+            "🏷️ <b>Fee:</b> <code>{fee}</code> · {role}\n"
+            "🕒 <b>Fill Time:</b> <code>{time}</code>"
             "{extra_line}"
         ),
         "order_update_alert": (
-            "<b>{status_badge}</b> · <b>{coin}</b> · {dir_badge}\n"
-            "👤 {address_display}\n\n"
-            "🎯 <code>{price}</code> × <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
-            "⏳ Remaining <code>{sz} {coin}</code>\n"
-            "⚙️ <code>{order_type}</code> · <code>{time_in_force}</code> · Reduce-only <code>{reduce_only}</code>\n"
-            "🕒 <code>{time}</code> · <code>#{oid}</code>"
+            "<b>{status_badge}</b> · <b>{coin}</b>\n"
+            "🧭 <b>Direction:</b> {dir_badge}\n"
+            "👤 <b>Address:</b> {address_display}\n\n"
+            "🎯 <b>Order Price:</b> <code>{price}</code>\n"
+            "📦 <b>Order Size:</b> <code>{orig_sz} {coin}</code>\n"
+            "⏳ <b>Remaining Size:</b> <code>{sz} {coin}</code>\n"
+            "💵 <b>Order Value:</b> <code>{notional}</code>\n"
+            "⚙️ <b>Order Type:</b> <code>{order_type}</code>\n"
+            "⏱️ <b>Time in Force:</b> <code>{time_in_force}</code>\n"
+            "🛡️ <b>Reduce Only:</b> <code>{reduce_only}</code>\n"
+            "🕒 <b>Updated At:</b> <code>{time}</code>\n"
+            "🔗 <b>Order ID:</b> <code>#{oid}</code>"
         ),
         "order_updates_batch_alert": "📝 <b>Order Updates ({count})</b>\n\n{items}",
         "order_update_item": (
-            "• <b>{status_badge}</b> · <b>{coin}</b> · {dir_badge}\n"
-            "  👤 {address_display}\n"
-            "  🎯 <code>{price}</code> × <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
-            "  ⚙️ <code>{order_type}</code> · <code>{time_in_force}</code> · <code>#{oid}</code>"
+            "• <b>{status_badge}</b> · <b>{coin}</b>\n"
+            "  🧭 <b>Direction:</b> {dir_badge}\n"
+            "  👤 <b>Address:</b> {address_display}\n"
+            "  🎯 <b>Price:</b> <code>{price}</code>\n"
+            "  📦 <b>Size:</b> <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
+            "  ⏳ <b>Remaining:</b> <code>{sz} {coin}</code>\n"
+            "  ⚙️ <b>Type:</b> <code>{order_type}</code> · <code>{time_in_force}</code>\n"
+            "  🔗 <b>Order ID:</b> <code>#{oid}</code>"
         ),
         "funding_alert": (
             "💸 <b>Funding Settlement</b> · <b>{coin}</b>\n"
@@ -230,28 +242,40 @@ MESSAGES: dict[str, dict[str, str]] = {
         "list_no_results": "🔍 未找到匹配的地址或备注。",
         "list_header": "📋 <b>监控地址看板:</b>\n\n",
         "tx_alert": (
-            "<b>{dir_badge} · {coin}</b>  <b>{notional}</b>\n"
+            "<b>{dir_badge} {coin}</b> · <b>{notional}</b>\n"
             "👤 {address_display}\n\n"
-            "💹 <code>{price}</code> × <code>{size} {coin}</code>\n"
+            "📊 <b>成交均价:</b> <code>{price}</code>\n"
+            "📦 <b>成交数量:</b> <code>{size} {coin}</code>\n"
+            "💵 <b>成交总额:</b> <code>{notional}</code>\n"
             "{pnl_line}"
-            "🏷️ <code>{fee}</code> · {role}\n"
-            "🕒 <code>{time}</code>"
+            "🏷️ <b>手续费:</b> <code>{fee}</code> · {role}\n"
+            "🕒 <b>成交时间:</b> <code>{time}</code>"
             "{extra_line}"
         ),
         "order_update_alert": (
-            "<b>{status_badge}</b> · <b>{coin}</b> · {dir_badge}\n"
-            "👤 {address_display}\n\n"
-            "🎯 <code>{price}</code> × <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
-            "⏳ 剩余 <code>{sz} {coin}</code>\n"
-            "⚙️ <code>{order_type}</code> · <code>{time_in_force}</code> · 只减仓 <code>{reduce_only}</code>\n"
-            "🕒 <code>{time}</code> · <code>#{oid}</code>"
+            "<b>{status_badge}</b> · <b>{coin}</b>\n"
+            "🧭 <b>委托方向:</b> {dir_badge}\n"
+            "👤 <b>监控地址:</b> {address_display}\n\n"
+            "🎯 <b>委托价格:</b> <code>{price}</code>\n"
+            "📦 <b>委托数量:</b> <code>{orig_sz} {coin}</code>\n"
+            "⏳ <b>剩余数量:</b> <code>{sz} {coin}</code>\n"
+            "💵 <b>委托总额:</b> <code>{notional}</code>\n"
+            "⚙️ <b>订单类型:</b> <code>{order_type}</code>\n"
+            "⏱️ <b>有效方式:</b> <code>{time_in_force}</code>\n"
+            "🛡️ <b>只减仓:</b> <code>{reduce_only}</code>\n"
+            "🕒 <b>更新时间:</b> <code>{time}</code>\n"
+            "🔗 <b>订单 ID:</b> <code>#{oid}</code>"
         ),
         "order_updates_batch_alert": "📝 <b>订单状态更新 ({count} 笔)</b>\n\n{items}",
         "order_update_item": (
-            "• <b>{status_badge}</b> · <b>{coin}</b> · {dir_badge}\n"
-            "  👤 {address_display}\n"
-            "  🎯 <code>{price}</code> × <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
-            "  ⚙️ <code>{order_type}</code> · <code>{time_in_force}</code> · <code>#{oid}</code>"
+            "• <b>{status_badge}</b> · <b>{coin}</b>\n"
+            "  🧭 <b>委托方向:</b> {dir_badge}\n"
+            "  👤 <b>监控地址:</b> {address_display}\n"
+            "  🎯 <b>委托价格:</b> <code>{price}</code>\n"
+            "  📦 <b>委托数量:</b> <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
+            "  ⏳ <b>剩余数量:</b> <code>{sz} {coin}</code>\n"
+            "  ⚙️ <b>订单类型:</b> <code>{order_type}</code> · <code>{time_in_force}</code>\n"
+            "  🔗 <b>订单 ID:</b> <code>#{oid}</code>"
         ),
         "funding_alert": (
             "💸 <b>资金费结算</b> · <b>{coin}</b>\n"
