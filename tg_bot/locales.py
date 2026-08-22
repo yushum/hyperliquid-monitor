@@ -69,25 +69,38 @@ MESSAGES: dict[str, dict[str, str]] = {
         ),
         "order_updates_batch_alert": "📝 <b>Order Updates ({count})</b>\n\n{items}",
         "order_burst_alert": (
-            "⚡ <b>Order Burst Summary ({count} updates)</b>\n"
+            "⚡ <b>Order Burst Summary</b>\n"
+            "🔢 <b>Total Updates:</b> <code>{count}</code>\n"
             "👤 <b>Address:</b> {address_display}\n\n"
             "{groups}\n\n"
-            "🕒 <b>Time Range:</b> <code>{start_time}</code> – <code>{end_time}</code>\n"
+            "🕒 <b>Started At:</b> <code>{start_time}</code>\n"
+            "🕒 <b>Ended At:</b> <code>{end_time}</code>\n"
             "ℹ️ High-frequency updates were combined to prevent notification flooding."
         ),
         "order_burst_group": (
-            "• {status_badge} · <b>{coin}</b> · {dir_badge}: <b>{count} orders</b>\n"
-            "  📦 <code>{size} {coin}</code> · 💵 <code>{notional}</code> · "
-            "🎯 <code>{price_range}</code>"
+            "• <b>Order Group</b>\n"
+            "  📌 <b>Status:</b> {status_badge}\n"
+            "  🪙 <b>Asset:</b> <code>{coin}</code>\n"
+            "  🧭 <b>Direction:</b> {dir_badge}\n"
+            "  🔢 <b>Order Count:</b> <code>{count}</code>\n"
+            "  📦 <b>Total Size:</b> <code>{size} {coin}</code>\n"
+            "  💵 <b>Total Value:</b> <code>{notional}</code>\n"
+            "  🎯 <b>Price Range:</b> <code>{price_range}</code>"
         ),
         "order_update_item": (
-            "• <b>{status_badge}</b> · <b>{coin}</b>\n"
+            "• <b>Order Update</b>\n"
+            "  📌 <b>Status:</b> {status_badge}\n"
+            "  🪙 <b>Asset:</b> <code>{coin}</code>\n"
             "  🧭 <b>Direction:</b> {dir_badge}\n"
             "  👤 <b>Address:</b> {address_display}\n"
             "  🎯 <b>Price:</b> <code>{price}</code>\n"
-            "  📦 <b>Size:</b> <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
+            "  📦 <b>Size:</b> <code>{orig_sz} {coin}</code>\n"
             "  ⏳ <b>Remaining:</b> <code>{sz} {coin}</code>\n"
-            "  ⚙️ <b>Type:</b> <code>{order_type}</code> · <code>{time_in_force}</code>\n"
+            "  💵 <b>Value:</b> <code>{notional}</code>\n"
+            "  ⚙️ <b>Type:</b> <code>{order_type}</code>\n"
+            "  ⏱️ <b>Time in Force:</b> <code>{time_in_force}</code>\n"
+            "  🛡️ <b>Reduce Only:</b> <code>{reduce_only}</code>\n"
+            "  🕒 <b>Updated At:</b> <code>{time}</code>\n"
             "  🔗 <b>Order ID:</b> <code>#{oid}</code>"
         ),
         "funding_alert": (
@@ -280,25 +293,38 @@ MESSAGES: dict[str, dict[str, str]] = {
         ),
         "order_updates_batch_alert": "📝 <b>订单状态更新 ({count} 笔)</b>\n\n{items}",
         "order_burst_alert": (
-            "⚡ <b>订单批量变动汇总 ({count} 笔)</b>\n"
+            "⚡ <b>订单批量变动汇总</b>\n"
+            "🔢 <b>订单总数:</b> <code>{count}</code>\n"
             "👤 <b>监控地址:</b> {address_display}\n\n"
             "{groups}\n\n"
-            "🕒 <b>时间范围:</b> <code>{start_time}</code> ～ <code>{end_time}</code>\n"
+            "🕒 <b>开始时间:</b> <code>{start_time}</code>\n"
+            "🕒 <b>结束时间:</b> <code>{end_time}</code>\n"
             "ℹ️ 高频订单已自动合并，避免逐笔刷屏。"
         ),
         "order_burst_group": (
-            "• {status_badge} · <b>{coin}</b> · {dir_badge}: <b>{count} 笔</b>\n"
-            "  📦 <code>{size} {coin}</code> · 💵 <code>{notional}</code> · "
-            "🎯 <code>{price_range}</code>"
+            "• <b>订单分组</b>\n"
+            "  📌 <b>订单状态:</b> {status_badge}\n"
+            "  🪙 <b>交易币种:</b> <code>{coin}</code>\n"
+            "  🧭 <b>委托方向:</b> {dir_badge}\n"
+            "  🔢 <b>订单笔数:</b> <code>{count}</code>\n"
+            "  📦 <b>委托数量合计:</b> <code>{size} {coin}</code>\n"
+            "  💵 <b>委托总额:</b> <code>{notional}</code>\n"
+            "  🎯 <b>委托价格范围:</b> <code>{price_range}</code>"
         ),
         "order_update_item": (
-            "• <b>{status_badge}</b> · <b>{coin}</b>\n"
+            "• <b>订单更新</b>\n"
+            "  📌 <b>订单状态:</b> {status_badge}\n"
+            "  🪙 <b>交易币种:</b> <code>{coin}</code>\n"
             "  🧭 <b>委托方向:</b> {dir_badge}\n"
             "  👤 <b>监控地址:</b> {address_display}\n"
             "  🎯 <b>委托价格:</b> <code>{price}</code>\n"
-            "  📦 <b>委托数量:</b> <code>{orig_sz} {coin}</code> · <b>{notional}</b>\n"
+            "  📦 <b>委托数量:</b> <code>{orig_sz} {coin}</code>\n"
             "  ⏳ <b>剩余数量:</b> <code>{sz} {coin}</code>\n"
-            "  ⚙️ <b>订单类型:</b> <code>{order_type}</code> · <code>{time_in_force}</code>\n"
+            "  💵 <b>委托总额:</b> <code>{notional}</code>\n"
+            "  ⚙️ <b>订单类型:</b> <code>{order_type}</code>\n"
+            "  ⏱️ <b>有效方式:</b> <code>{time_in_force}</code>\n"
+            "  🛡️ <b>只减仓:</b> <code>{reduce_only}</code>\n"
+            "  🕒 <b>更新时间:</b> <code>{time}</code>\n"
             "  🔗 <b>订单 ID:</b> <code>#{oid}</code>"
         ),
         "funding_alert": (

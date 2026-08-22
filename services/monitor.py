@@ -1220,7 +1220,7 @@ class BlockchainMonitor:
                 "order_burst_alert",
                 count=len(to_notify),
                 address_display=to_notify[0]["address_display"],
-                groups="\n".join(group_lines),
+                groups="\n\n".join(group_lines),
                 start_time=ordered[0]["time"],
                 end_time=ordered[-1]["time"],
             )

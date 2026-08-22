@@ -538,16 +538,18 @@ class ReliabilityTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(args[0]), len(items))
         self.assertEqual(args[1], address)
         message = args[3]
-        self.assertIn(f"订单批量变动汇总 ({len(items)} 笔)", message)
+        self.assertIn("订单批量变动汇总", message)
+        self.assertIn(f"订单总数:</b> <code>{len(items)}</code>", message)
         self.assertIn(address, message)
         self.assertIn("🟡 挂单中", message)
         self.assertIn("⚪ 已撤销", message)
-        self.assertEqual(message.count("100 笔"), 2)
-        self.assertEqual(message.count("100 BTC"), 2)
+        self.assertEqual(message.count("订单笔数:</b> <code>100</code>"), 2)
+        self.assertEqual(message.count("委托数量合计:</b> <code>100 BTC</code>"), 2)
         self.assertIn("$14,950.00", message)
         self.assertIn("$24,950.00", message)
         self.assertIn("$100.00 – $199.00", message)
         self.assertIn("$200.00 – $299.00", message)
+        self.assertNotIn(" · ", message)
         self.assertNotIn("订单 ID", message)
 
 
